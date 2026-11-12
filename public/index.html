@@ -364,19 +364,24 @@ function renderLadder() {
     .filter((c) => c.distPct >= -50 && c.distPct <= 60)
     .sort((a, b) => b.distPct - a.distPct);
   const maxAmt = Math.max(1, ...rows.map((c) => c.totalUsd));
+  // 条宽：金额 √ 标尺打底，但不得窄于标签文本宽（11px 粗体实测），上限给右侧 % 刻度让位
+  const meas = document.createElement('canvas').getContext('2d');
+  meas.font = `600 11px ${FONT}`;
   let lastBottom = -Infinity;
   for (const c of rows) {
     let top = yOf(c.distPct) - 9;
     if (top < lastBottom + 2) top = lastBottom + 2;   // 错行防重叠
     lastBottom = top + 18;
+    const label = `${c.side === 'short' ? '空' : '多'} ${fmtM(c.totalUsd)} · ${fmtPct(c.distPct)}`;
     const div = document.createElement('div');
     div.className = 'bar';
     const base = c.side === 'long' ? '0,177,107' : '246,70,93';
     const a = 0.55 + 0.30 * Math.sqrt(c.totalUsd / maxAmt);
     div.style.background = `rgba(${base},${a.toFixed(2)})`;
     div.style.top = top + 'px';
-    div.style.width = `${(16 + 52 * Math.sqrt(c.totalUsd / maxAmt)).toFixed(1)}%`;
-    div.textContent = `${c.side === 'short' ? '空' : '多'} ${fmtM(c.totalUsd)} · ${fmtPct(c.distPct)}`;
+    const amtW = 34 + 138 * Math.sqrt(c.totalUsd / maxAmt);
+    div.style.width = `${Math.min(178, Math.max(amtW, meas.measureText(label).width + 16)).toFixed(0)}px`;
+    div.textContent = label;
     el.appendChild(div);
   }
 }
@@ -478,7 +483,8 @@ function draw() {
   for (let k = 0; k < NL; k++) {
     const frac = k / (NL - 1);
     const p = Math.pow(10, scale.lb - frac * (scale.lb - scale.la));
-    ctx.fillText(fmtPrice(p), plotW + AXIS_GAP, S.mainH * frac);
+    const ly = Math.min(Math.max(S.mainH * frac, 8), S.mainH - 8); // 首/末标签钳进画布，防顶缘裁切、与量轴标签留距
+    ctx.fillText(fmtPrice(p), plotW + AXIS_GAP, ly);
   }
   // 时间竖线（与时间轴刻度对齐，贯穿三窗格）
   const tickBars = [1, 2, 5, 10, 20, 50, 100, 200, 500, 1000, 2000].find((n) => n * bw >= 110) || 2000;
