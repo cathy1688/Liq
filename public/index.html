@@ -697,7 +697,7 @@ canvas.addEventListener('pointermove', (e) => {
     if (drag.divider === 1) { S.volH = Math.min(160, Math.max(50, drag.volH + dy)); resize(); }
     else if (drag.divider === 2) { S.macdH = Math.min(180, Math.max(60, drag.macdH + dy)); resize(); renderLadder(); }
     else if (drag.moved) {
-      S.endX = drag.endX + dx / (plotW / S.count); // 往右拉 = 看更早
+      S.endX = drag.endX - dx / (plotW / S.count); // 抓图跟手：往右拉看以前（内容随手右移）、往左拉看后面；旧版符号反了，与原版当年修过的同一个坑
       clampView(); maybePrefetch();
     }
     S.mouse = { x: e.offsetX, y: e.offsetY, inside: true, dragging: true };
