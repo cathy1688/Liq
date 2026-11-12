@@ -31,7 +31,9 @@ const TF_MS = {
 };
 const LIGHTER_MARKETS = { ETH: 0, BTC: 1, TAO: 13, HYPE: 24, UNI: 30, LIT: 120 };
 const BITFINEX_PAIRS = { BTC: 'tBTCUSD', ETH: 'tETHUSD', UNI: 'tUNIUSD' }; // TAO/HYPE/LIT 无 Bitfinex 对子
-const BFX_TF = { '15m': '15m', '1h': '1h', '4h': '4h', '1d': '1D', '1w': '7D', '1M': '1M' };
+const BFX_TF = { '15m': '15m', '1h': '1h', '4h': '4h', '1d': '1D', '1w': '1W', '1M': '1M' };
+// 周线必须用 '1W'（周一锚定的自然周、开收盘连续）；'7D' 是滚动 7 天窗，锚在周四且开盘不接上根收盘，
+// 画出来就是乱的（2026-11-12 实测：'7D' 的 2025-03-06 根 o=83148，而同窗日线聚合 o=90848）
 const BACKFILL_TARGET_MS = Date.UTC(2022, 10, 11); // 2022-11-11，与现版回填视界一致
 const HL_INFO = 'https://api.hyperliquid.xyz/info';
 const HL_LEADERBOARD = 'https://stats-data.hyperliquid.xyz/Mainnet/leaderboard';
