@@ -1,0 +1,1 @@
+{"description":"流动性看板（Cloudflare Worker + KV + Cron：HL 鲸鱼 + Lighter 样本仓位清算簇）","devDependencies":{"wrangler":"^3"},"name":"liq","private":true,"scripts":{"build":"node scripts/build.mjs","deploy":"npm run build && wrangler deploy","dev":"npm run build && wrangler dev","verify":"node tools/local-verify.mjs"},"type":"module","version":"1.0.0"}

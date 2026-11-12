@@ -1,0 +1,731 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>流动性看板 · 清算簇</title>
+<style>
+  :root{
+    --ink:#1F2D38; --gray:#8A9BA3; --axis-gray:#A3B4BC; --border:#E3EAF0; --grid:#E7EEF3;
+    --up:#50B383; --down:#F6465D; --long:#00B16B; --short:#F6465D; --selected:#00A870;
+  }
+  *{box-sizing:border-box; margin:0; padding:0;}
+  body{background:#F7F8FA; color:var(--ink);
+    font-family:Inter,"SF Pro Display","Segoe UI",Roboto,"Helvetica Neue",Arial,"PingFang SC","Microsoft YaHei",sans-serif;
+    font-variant-numeric:tabular-nums; -webkit-font-smoothing:antialiased;}
+  .wrap{max-width:1800px; margin:0 auto; background:#fff; border-left:1px solid var(--border); border-right:1px solid var(--border);
+    padding:14px 18px 18px; min-height:100vh;}
+  @media (max-width:760px){ .wrap{padding:10px 8px 14px;} }
+  .head-row{display:flex; align-items:center; gap:14px; flex-wrap:wrap;}
+  h1{font-size:19px; font-weight:700; letter-spacing:.5px;}
+  .tabs{display:flex; gap:6px; flex-wrap:wrap;}
+  .tabs button{border:1px solid var(--border); background:#fff; color:var(--ink); border-radius:8px;
+    padding:6px 14px; font-size:14px; font-weight:600; cursor:pointer; font-family:inherit;}
+  .tabs button.on{background:var(--selected); border-color:var(--selected); color:#fff;}
+  .price-row{display:flex; align-items:baseline; gap:14px; margin-top:10px; flex-wrap:wrap;}
+  .big-price{font-size:30px; font-weight:600; line-height:1;}
+  .chg{font-size:15px; font-weight:600;}
+  .stats{display:flex; gap:18px; flex-wrap:wrap; margin-left:6px;}
+  .stat b{display:block; font-size:13px; font-weight:600;}
+  .stat span{font-size:11px; color:var(--gray);}
+  .totals{display:flex; height:26px; border-radius:6px; overflow:hidden; margin-top:12px; background:#F0F3F5;}
+  .totals .seg{display:flex; align-items:center; justify-content:center; color:#fff; font-size:12px; font-weight:600;
+    white-space:nowrap; overflow:hidden; min-width:0; transition:width .3s;}
+  .totals .seg.long{background:var(--long);} .totals .seg.short{background:var(--short);}
+  .stamps{display:flex; gap:16px; margin-top:8px; font-size:12px; color:var(--gray); flex-wrap:wrap;}
+  .toolbar{display:flex; align-items:center; gap:10px; margin-top:14px; flex-wrap:wrap;}
+  .seg-ctl{display:flex; border:1px solid var(--border); border-radius:8px; overflow:hidden;}
+  .seg-ctl button{border:0; background:#fff; padding:5px 12px; font-size:13px; cursor:pointer; color:var(--ink); font-family:inherit;}
+  .seg-ctl button.on{background:var(--selected); color:#fff; font-weight:600;}
+  .legend-note{font-size:12px; color:var(--gray); display:flex; align-items:center; gap:6px;}
+  .legend-note i{width:14px; height:10px; background:var(--long); opacity:.34; border-radius:2px; display:inline-block;}
+  .spacer{flex:1;}
+  .readout{margin-top:8px; font-size:12px; color:var(--gray); display:flex; gap:14px; flex-wrap:wrap; min-height:17px;}
+  .readout b{color:var(--ink); font-weight:600;}
+  .chart-flex{display:flex; margin-top:6px; border:1px solid var(--border); border-radius:10px; overflow:hidden;}
+  .chart-wrap{position:relative; flex:1; min-width:0;}
+  canvas{display:block; width:100%; cursor:grab; touch-action:none; outline:none;}
+  canvas.dragging{cursor:grabbing;}
+  .ladder{width:232px; flex:none; border-left:1px solid var(--border); position:relative; background:#FCFDFE;}
+  .ladder h4{font-size:12px; color:var(--gray); font-weight:600; padding:8px 10px 4px;}
+  .ladder .bar{position:absolute; left:8px; border-radius:4px; display:flex; align-items:center; justify-content:center;
+    font-size:11px; color:var(--ink); overflow:hidden; white-space:nowrap;}
+  .home-btn{position:absolute; right:108px; bottom:34px; z-index:5; border:1px solid var(--border); background:#fff;
+    border-radius:8px; padding:6px 12px; font-size:12px; font-weight:600; cursor:pointer; box-shadow:0 2px 8px rgba(31,45,56,.12); font-family:inherit;}
+  .hover-card{position:absolute; z-index:6; width:204px; padding:7px 10px; background:rgba(255,255,255,.97);
+    border:1px solid var(--short); border-radius:8px; box-shadow:0 4px 16px rgba(31,45,56,.16);
+    pointer-events:none; line-height:1.5; display:none;}
+  .hover-card .r{text-align:center; white-space:nowrap;}
+  .hover-card .lab{color:#8A9BA3; font-size:12px; font-weight:400;}
+  .lists{display:grid; grid-template-columns:1fr 1fr; gap:16px; margin-top:16px;}
+  @media (max-width:760px){ .lists{grid-template-columns:1fr;} .ladder{display:none;} }
+  .list-box{border:1px solid var(--border); border-radius:10px; overflow:hidden;}
+  .list-box h3{font-size:14px; padding:10px 14px; border-bottom:1px solid var(--border);}
+  .list-box table{width:100%; border-collapse:collapse; font-size:13px;}
+  .list-box td,.list-box th{padding:7px 14px; border-bottom:1px solid #F0F3F5; text-align:right;}
+  .list-box td:first-child,.list-box th:first-child{text-align:left;}
+  .list-box th{color:var(--gray); font-weight:500; font-size:12px;}
+  .list-box .empty{padding:16px; color:var(--gray); font-size:13px; text-align:center;}
+  .dot{display:inline-block; width:9px; height:9px; border-radius:2px; margin-right:7px; vertical-align:1px;}
+  footer{margin-top:16px; font-size:12px; color:var(--gray); line-height:1.7; border-top:1px solid var(--border); padding-top:10px;}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="head-row">
+    <h1>流动性看板</h1>
+    <div class="tabs" id="coinTabs"></div>
+  </div>
+  <div class="price-row">
+    <div class="big-price" id="bigPrice">—</div>
+    <div class="chg" id="chgPct">—</div>
+    <div class="stats">
+      <div class="stat"><b id="stVol">—</b><span>24h 成交额</span></div>
+      <div class="stat"><b id="stOi">—</b><span>未平仓量</span></div>
+      <div class="stat"><b id="stFund">—</b><span>资金费率</span></div>
+    </div>
+  </div>
+  <div class="totals" id="totalsBar"></div>
+  <div class="stamps">
+    <span id="stampLive">行情更新于 —</span>
+    <span id="stampSnap">清算快照于 —</span>
+  </div>
+  <div class="toolbar">
+    <div class="seg-ctl" id="tfCtl"></div>
+    <div class="legend-note"><i></i>颜色深浅 = 清算金额</div>
+    <div class="spacer"></div>
+    <div class="seg-ctl" id="modeCtl">
+      <button data-mode="all" class="on">全部</button><button data-mode="near">近端 ±30%</button><button data-mode="off">关</button>
+    </div>
+    <div class="seg-ctl" id="axisCtl">
+      <button data-axis="log" class="on">对数轴</button><button data-axis="linear">线性轴</button>
+    </div>
+  </div>
+  <div class="readout" id="readout"></div>
+  <div class="chart-flex">
+    <div class="chart-wrap" id="chartWrap">
+      <canvas id="chart" tabindex="0"></canvas>
+      <button class="home-btn" id="homeBtn" style="display:none">回到最新</button>
+      <div class="hover-card" id="hoverCard"></div>
+    </div>
+    <div class="ladder" id="ladder"><h4>全景阶梯（−50% ~ +60%）</h4></div>
+  </div>
+  <div class="lists">
+    <div class="list-box"><h3 id="longHead">多头清算簇</h3><div id="longList"></div></div>
+    <div class="list-box"><h3 id="shortHead">空头清算簇</h3><div id="shortList"></div></div>
+  </div>
+  <footer>
+    数据来源：清算簇由 Hyperliquid 排行榜前 300 地址与 Lighter 成交发现活跃账户的真实仓位清算价合并生成；Lighter 为样本覆盖、逐轮累积，非全量。
+    币安、OKX、Bybit 等中心化交易所不公开逐仓清算价，无法生成前瞻清算簇，未接入。
+    K 线：Bitfinex 长历史拼接 Hyperliquid 近段（TAO / HYPE / LIT 为 Hyperliquid 可得历史，起点如实标注）。
+  </footer>
+</div>
+<script>
+'use strict';
+/* ================= 常量（与现版看板定版一致） ================= */
+const COINS = ['BTC','ETH','HYPE','TAO','UNI','LIT'];
+const TF_LIST = [['15m','15分'],['1h','1时'],['4h','4时'],['1d','日'],['1w','周'],['1M','月']];
+const TF_MS = {'15m':9e5,'1h':36e5,'4h':144e5,'1d':864e5,'1w':6048e5,'1M':2592e6};
+const COL = { up:'#50B383', down:'#F6465D', long:'#00B16B', short:'#F6465D', shortHover:'#F91F3C',
+  grid:'#E7EEF3', ink:'#1F2D38', axisGray:'#A3B4BC',
+  ema5:'#FF8A3D', ema30:'#F6465D', ema90:'#F5B800', ema200:'#34C759',
+  volMa5:'#26a69a', volMa10:'#e8a33d', dif:'#1F9D63', dea:'#E8930C' };
+const AXIS_W = 96, AXIS_GAP = 22;
+const FONT = 'Inter,"SF Pro Display","Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif';
+
+/* ================= 状态 ================= */
+const S = {
+  coin: 'BTC', tf: '1d', bars: [], snap: null, markets: [], candlesTf: {},
+  endX: 0, count: 160, homeCount: 160,
+  hoverI: -1, hoverCluster: null, mouse: null,
+  mode: 'all', axis: 'log',
+  mainH: 520, volH: 90, macdH: 110, timeH: 20,
+  liveMark: 0, liveAt: 0, loadingOlder: false,
+};
+const cache = new Map(); // `${coin}:${tf}` -> bars
+const $ = (id) => document.getElementById(id);
+const canvas = $('chart'), ctx = canvas.getContext('2d');
+
+/* ================= 格式化 ================= */
+const fmtPrice = (v) => {
+  if (!isFinite(v) || v <= 0) return '—';
+  const d = v >= 1000 ? 0 : v >= 100 ? 1 : v >= 1 ? 2 : 4;
+  return v.toLocaleString('en-US', { minimumFractionDigits: d, maximumFractionDigits: d });
+};
+const fmtM = (v) => `$${(v / 1e6).toFixed(1)}M`;
+const fmtUsd = (v) => v >= 1e9 ? `$${(v / 1e9).toFixed(2)}B` : v >= 1e6 ? `$${(v / 1e6).toFixed(1)}M` : v >= 1e3 ? `$${(v / 1e3).toFixed(1)}K` : `$${v.toFixed(0)}`;
+const fmtPct = (v, digits = 1) => `${v >= 0 ? '+' : ''}${v.toFixed(digits)}%`;
+const fmtTime = (ms) => ms ? new Date(ms).toLocaleString('zh-CN', { hour12: false }) : '—';
+const barTime = (t) => {
+  const d = new Date(t);
+  return S.tf === '1d' || S.tf === '1w' || S.tf === '1M'
+    ? d.toLocaleDateString('zh-CN')
+    : d.toLocaleString('zh-CN', { hour12: false, month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+};
+
+/* ================= 指标 ================= */
+function emaSeries(vals, n) {
+  const out = new Array(vals.length).fill(NaN), k = 2 / (n + 1);
+  let e = NaN;
+  for (let i = 0; i < vals.length; i++) {
+    e = isNaN(e) ? vals[i] : vals[i] * k + e * (1 - k);
+    out[i] = i >= n - 1 ? e : NaN;
+  }
+  return out;
+}
+let IND = null;
+function computeIndicators() {
+  const b = S.bars, closes = b.map((x) => x.c), vols = b.map((x) => x.v);
+  const sma = (arr, n) => arr.map((_, i) => i >= n - 1 ? arr.slice(i - n + 1, i + 1).reduce((s, v) => s + v, 0) / n : NaN);
+  const e12 = emaSeries(closes, 12), e26 = emaSeries(closes, 26);
+  const dif = closes.map((_, i) => isNaN(e12[i]) || isNaN(e26[i]) ? NaN : e12[i] - e26[i]);
+  const deaIn = dif.map((v) => isNaN(v) ? 0 : v);
+  const deaRaw = emaSeries(deaIn, 9);
+  const dea = dif.map((v, i) => isNaN(v) ? NaN : deaRaw[i]);
+  IND = {
+    ema5: emaSeries(closes, 5), ema30: emaSeries(closes, 30),
+    ema90: emaSeries(closes, 90), ema200: emaSeries(closes, 200),
+    volMa5: sma(vols, 5), volMa10: sma(vols, 10),
+    dif, dea, hist: dif.map((v, i) => isNaN(v) || isNaN(dea[i]) ? NaN : 2 * (v - dea[i])),
+  };
+}
+
+/* ================= 数据 ================= */
+async function getJSON(u, opts) { const r = await fetch(u, opts); if (!r.ok) throw new Error(u); return r.json(); }
+async function loadDashboard() {
+  const d = await getJSON(`/api/dashboard?coin=${S.coin}`);
+  S.markets = d.markets || []; S.snap = d.snapshot; S.candlesTf = d.candlesTf || {};
+  renderHeader(); renderLists(); renderLadder();
+}
+async function loadCandles(before) {
+  const key = `${S.coin}:${S.tf}`;
+  if (!before && cache.has(key)) { S.bars = cache.get(key); return; }
+  const q = before ? `&before=${before}&limit=1500` : '&limit=1500';
+  const d = await getJSON(`/api/candles?coin=${S.coin}&tf=${S.tf}${q}`);
+  const rows = (d.bars || []).map((b) => ({ ...b }));
+  if (before) {
+    const have = new Set(S.bars.map((b) => b.t));
+    const add = rows.filter((b) => !have.has(b.t));
+    if (add.length) { S.bars = [...add, ...S.bars]; S.endX += add.length; }
+  } else {
+    S.bars = rows;
+  }
+  cache.set(key, S.bars);
+  computeIndicators();
+}
+async function hlLive() {
+  try {
+    const [meta, ctxs] = await getJSON('https://api.hyperliquid.xyz/info', {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ type: 'metaAndAssetCtxs' }),
+    });
+    S.markets = meta.universe.map((u, i) => {
+      if (!COINS.includes(u.name)) return null;
+      const c = ctxs[i] || {}, markPx = Number(c.markPx);
+      return { coin: u.name, market: { markPx, prevDayPx: Number(c.prevDayPx),
+        changePct: markPx && Number(c.prevDayPx) ? (markPx / Number(c.prevDayPx) - 1) * 100 : 0,
+        dayVolumeUsd: Number(c.dayNtlVlm), openInterestUsd: Number(c.openInterest) * markPx, fundingRate: Number(c.funding) } };
+    }).filter(Boolean).sort((a, b) => COINS.indexOf(a.coin) - COINS.indexOf(b.coin));
+    const mine = S.markets.find((m) => m.coin === S.coin);
+    if (mine) S.liveMark = mine.market.markPx;
+    S.liveAt = Date.now();
+    renderHeader();
+  } catch { /* 行情层失败时保留上次显示 */ }
+  try {
+    const last = S.bars[S.bars.length - 1];
+    if (last) {
+      const j = await getJSON('https://api.hyperliquid.xyz/info', {
+        method: 'POST', headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ type: 'candleSnapshot', req: { coin: S.coin, interval: S.tf, startTime: last.t, endTime: Date.now() } }),
+      });
+      const wasHome = isHome();
+      for (const c of j || []) {
+        const nb = { t: c.t, o: +c.o, h: +c.h, l: +c.l, c: +c.c, v: +c.v };
+        const tail = S.bars[S.bars.length - 1];
+        if (tail && tail.t === nb.t) S.bars[S.bars.length - 1] = nb;
+        else if (!tail || nb.t > tail.t) S.bars.push(nb);
+      }
+      if (wasHome) goHome(false);
+      computeIndicators(); draw();
+    }
+  } catch { /* 同上 */ }
+}
+
+/* ================= 头部 / 列表 / 阶梯 ================= */
+function renderHeader() {
+  const m = (S.markets.find((x) => x.coin === S.coin) || {}).market || {};
+  const px = S.liveMark || m.markPx || (S.snap && S.snap.markPx) || 0;
+  $('bigPrice').textContent = px ? fmtPrice(px) : '—';
+  const chg = $('chgPct');
+  if (isFinite(m.changePct)) { chg.textContent = fmtPct(m.changePct, 2); chg.style.color = m.changePct >= 0 ? COL.up : COL.down; }
+  else chg.textContent = '—';
+  $('stVol').textContent = m.dayVolumeUsd ? fmtUsd(m.dayVolumeUsd) : '—';
+  $('stOi').textContent = m.openInterestUsd ? fmtUsd(m.openInterestUsd) : '—';
+  $('stFund').textContent = isFinite(m.fundingRate) ? `${(m.fundingRate * 100).toFixed(4)}%` : '—';
+  const bar = $('totalsBar');
+  if (S.snap && (S.snap.totals.longLiqUsd + S.snap.totals.shortLiqUsd) > 0) {
+    const L = S.snap.totals.longLiqUsd, Sh = S.snap.totals.shortLiqUsd, tot = L + Sh;
+    bar.innerHTML = `<div class="seg long" style="width:${(L / tot * 100).toFixed(2)}%">多头清算 ${fmtUsd(L)}</div>` +
+      `<div class="seg short" style="width:${(Sh / tot * 100).toFixed(2)}%">空头清算 ${fmtUsd(Sh)}</div>`;
+  } else bar.innerHTML = '';
+  $('stampLive').textContent = `行情更新于 ${S.liveAt ? fmtTime(S.liveAt) : '—'}`;
+  $('stampSnap').textContent = `清算快照于 ${S.snap ? fmtTime(Date.parse(S.snap.fetchedAt)) : '—（积累中）'}`;
+  document.querySelectorAll('#coinTabs button').forEach((b) => b.classList.toggle('on', b.dataset.coin === S.coin));
+}
+function clusterRows(side) {
+  if (!S.snap) return [];
+  return S.snap.clusters.filter((c) => c.side === side);
+}
+function renderLists() {
+  const mk = (side, headEl, listEl, color) => {
+    const rows = clusterRows(side);
+    const sum = rows.reduce((s, c) => s + c.totalUsd, 0);
+    $(headEl).innerHTML = `${side === 'long' ? '多头' : '空头'}清算簇（${fmtM(sum)}）`;
+    if (!rows.length) { $(listEl).innerHTML = '<div class="empty">暂无成簇数据</div>'; return; }
+    $(listEl).innerHTML = '<table><tr><th>价位</th><th>金额</th><th>鲸鱼</th><th>距现价</th></tr>' +
+      rows.map((c) => `<tr><td><span class="dot" style="background:${color}"></span>${fmtPrice(c.lowPx)} – ${fmtPrice(c.highPx)}</td>` +
+        `<td>${fmtM(c.totalUsd)}</td><td>${c.whaleCount}</td><td>${fmtPct(c.distPct)}</td></tr>`).join('') + '</table>';
+  };
+  mk('long', 'longHead', 'longList', COL.long);
+  mk('short', 'shortHead', 'shortList', COL.short);
+}
+const blockAlpha = (amt, maxAmt) => Math.min(0.54, 0.30 + 0.24 * Math.sqrt(maxAmt > 0 ? amt / maxAmt : 0));
+function renderLadder() {
+  const el = $('ladder');
+  el.querySelectorAll('.bar').forEach((n) => n.remove());
+  if (!S.snap || !S.snap.markPx) return;
+  const H = S.mainH + S.volH + S.macdH + S.timeH + 30;
+  el.style.height = H + 'px';
+  const mark = S.snap.markPx;
+  const rows = S.snap.clusters.map((c) => ({
+    ...c, loPct: (c.lowPx / mark - 1) * 100, hiPct: (c.highPx / mark - 1) * 100,
+  })).filter((c) => c.hiPct >= -50 && c.loPct <= 60);
+  const maxAmt = Math.max(1, ...rows.map((c) => c.totalUsd));
+  const yOf = (pct) => 26 + (60 - pct) / 110 * (H - 40);
+  for (const c of rows) {
+    const top = yOf(Math.min(60, c.hiPct)), bottom = yOf(Math.max(-50, c.loPct));
+    const div = document.createElement('div');
+    div.className = 'bar';
+    const base = c.side === 'long' ? '0,177,107' : '246,70,93';
+    div.style.background = `rgba(${base},${blockAlpha(c.totalUsd, maxAmt).toFixed(2)})`;
+    div.style.top = top + 'px';
+    div.style.height = Math.max(16, bottom - top) + 'px';
+    div.style.width = `${30 + 70 * (c.totalUsd / maxAmt)}%`;
+    div.textContent = `${c.side === 'short' ? '空' : '多'} ${fmtM(c.totalUsd)} · ${fmtPct(c.distPct)}`;
+    el.appendChild(div);
+  }
+}
+
+/* ================= 图表几何与绘制 ================= */
+let W = 0, H = 0, plotW = 0;
+const DIV = 4;
+const paneY = () => ({
+  main: 0, vol: S.mainH + DIV, macd: S.mainH + DIV + S.volH + DIV,
+  time: S.mainH + DIV + S.volH + DIV + S.macdH,
+});
+function resize() {
+  const wrap = $('chartWrap');
+  W = wrap.clientWidth; H = S.mainH + S.volH + S.macdH + S.timeH + DIV * 2;
+  plotW = Math.max(200, W - AXIS_W);
+  const dpr = window.devicePixelRatio || 1;
+  canvas.width = Math.round(W * dpr); canvas.height = Math.round(H * dpr);
+  canvas.style.height = H + 'px';
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  S.homeCount = Math.min(180, Math.max(110, Math.round(plotW / 9)));
+  renderLadder();
+}
+const startX = () => S.endX - S.count;
+const xFor = (i) => (i - startX()) * (plotW / S.count) + (plotW / S.count) / 2;
+const idxFloatForX = (px) => startX() + px / (plotW / S.count);
+let scale = null;
+function computeScale() {
+  const lo = Math.max(0, Math.floor(startX())), hi = Math.min(S.bars.length, Math.ceil(S.endX));
+  let mn = Infinity, mx = -Infinity;
+  for (let i = lo; i < hi; i++) { mn = Math.min(mn, S.bars[i].l); mx = Math.max(mx, S.bars[i].h); }
+  if (!isFinite(mn)) {
+    const c = S.liveMark || (S.snap && S.snap.markPx) || (S.bars.length ? S.bars[S.bars.length - 1].c : 100);
+    mn = c * 0.92; mx = c * 1.08;
+  }
+  const pad = (mx - mn) * 0.06 || mx * 0.02;
+  mn -= pad; mx += pad;
+  if (S.axis === 'log') {
+    const a = Math.log10(Math.max(mn, 1e-9)), b = Math.log10(mx);
+    scale = { y: (p) => (b - Math.log10(Math.max(p, 1e-9))) / (b - a) * S.mainH,
+              inv: (y) => Math.pow(10, b - y / S.mainH * (b - a)), mn, mx };
+  } else {
+    scale = { y: (p) => (mx - p) / (mx - mn) * S.mainH, inv: (y) => mx - y / S.mainH * (mx - mn), mn, mx };
+  }
+}
+function niceStep(range, target) {
+  const raw = range / target, mag = Math.pow(10, Math.floor(Math.log10(raw)));
+  for (const m of [1, 2, 2.5, 5, 10]) if (raw <= m * mag) return m * mag;
+  return 10 * mag;
+}
+function displayedClusters() {
+  if (!S.snap || S.mode === 'off') return [];
+  if (S.mode === 'near') return S.snap.clusters.filter((c) => Math.abs(c.distPct) <= 30);
+  return S.snap.clusters;
+}
+const rgba = (hex, a) => {
+  const n = parseInt(hex.slice(1), 16);
+  return `rgba(${(n >> 16) & 255},${(n >> 8) & 255},${n & 255},${a})`;
+};
+function drawLine(series, color, y0, y1, vScale) {
+  ctx.strokeStyle = color; ctx.lineWidth = 1; ctx.globalAlpha = 0.9; ctx.beginPath();
+  let started = false;
+  const lo = Math.max(0, Math.floor(startX())), hi = Math.min(S.bars.length, Math.ceil(S.endX));
+  for (let i = lo; i < hi; i++) {
+    const v = series[i];
+    if (!isFinite(v)) { started = false; continue; }
+    const x = xFor(i), y = vScale(v);
+    if (!started) { ctx.moveTo(x, y); started = true; } else ctx.lineTo(x, y);
+  }
+  ctx.stroke(); ctx.globalAlpha = 1;
+}
+function draw() {
+  if (!W) return;
+  const py = paneY();
+  ctx.clearRect(0, 0, W, H);
+  ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, W, H);
+  computeScale();
+  const bw = plotW / S.count;
+  const lo = Math.max(0, Math.floor(startX())), hi = Math.min(S.bars.length, Math.ceil(S.endX));
+  /* --- 网格（最底层） --- */
+  ctx.strokeStyle = COL.grid; ctx.lineWidth = 1;
+  ctx.font = `400 13px ${FONT}`; ctx.fillStyle = COL.ink; ctx.textBaseline = 'middle';
+  const step = niceStep(scale.mx - scale.mn, S.mainH / 84);
+  ctx.beginPath();
+  for (let p = Math.ceil(scale.mn / step) * step; p <= scale.mx; p += step) {
+    const y = Math.round(scale.y(p)) + 0.5;
+    ctx.moveTo(0, y); ctx.lineTo(plotW, y);
+  }
+  ctx.stroke();
+  ctx.textAlign = 'left';
+  for (let p = Math.ceil(scale.mn / step) * step; p <= scale.mx; p += step) {
+    ctx.fillText(fmtPrice(p), plotW + AXIS_GAP, scale.y(p));
+  }
+  // 时间竖线（与时间轴刻度对齐，贯穿三窗格）
+  const tickBars = [1, 2, 5, 10, 20, 50, 100, 200, 500, 1000, 2000].find((n) => n * bw >= 110) || 2000;
+  ctx.beginPath();
+  for (let i = Math.ceil(startX() / tickBars) * tickBars; i < S.endX; i += tickBars) {
+    if (i < 0 || i >= S.bars.length) continue;
+    const x = Math.round(xFor(i) - bw / 2) + 0.5;
+    ctx.moveTo(x, 0); ctx.lineTo(x, py.time);
+  }
+  ctx.stroke();
+  ctx.font = `400 11px ${FONT}`; ctx.fillStyle = COL.axisGray; ctx.textAlign = 'center';
+  for (let i = Math.ceil(startX() / tickBars) * tickBars; i < S.endX; i += tickBars) {
+    if (i < 0 || i >= S.bars.length) continue;
+    const d = new Date(S.bars[i].t);
+    const label = (S.tf === '1d' || S.tf === '1w' || S.tf === '1M')
+      ? `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}${S.tf === '1M' ? '' : '-' + String(d.getDate()).padStart(2, '0')}`
+      : `${d.getMonth() + 1}-${d.getDate()} ${String(d.getHours()).padStart(2, '0')}:00`;
+    ctx.fillText(label, Math.min(Math.max(xFor(i), 30), plotW - 30), py.time + S.timeH / 2);
+  }
+  ctx.textAlign = 'left';
+  /* --- 清算色块（平填、真实价位 ∩ 可见区） --- */
+  const clusters = displayedClusters();
+  const maxAmt = Math.max(1, ...clusters.map((c) => c.totalUsd));
+  for (const c of clusters) {
+    const hov = S.hoverCluster === c;
+    const color = hov && c.side === 'short' ? COL.shortHover : c.side === 'long' ? COL.long : COL.short;
+    const alpha = hov ? (c.side === 'short' ? Math.min(0.64, blockAlpha(c.totalUsd, maxAmt) + 0.10) : 0.6)
+                      : blockAlpha(c.totalUsd, maxAmt);
+    ctx.fillStyle = rgba(color, alpha);
+    const yTop = scale.y(c.highPx), yBot = scale.y(c.lowPx);
+    if (yBot < 0) ctx.fillRect(0, 0, plotW, 3);                    // 整簇在可见区上方 → 顶部边缘标记
+    else if (yTop > S.mainH) ctx.fillRect(0, S.mainH - 3, plotW, 3); // 整簇在下方 → 底部边缘标记
+    else ctx.fillRect(0, Math.max(0, yTop), plotW, Math.min(S.mainH, yBot) - Math.max(0, yTop));
+  }
+  /* --- K 线 --- */
+  for (let i = lo; i < hi; i++) {
+    const b = S.bars[i], x = xFor(i), up = b.c >= b.o;
+    ctx.strokeStyle = ctx.fillStyle = up ? COL.up : COL.down;
+    ctx.beginPath(); ctx.moveTo(x, scale.y(b.h)); ctx.lineTo(x, scale.y(b.l)); ctx.stroke();
+    const bwBody = Math.max(1, bw * 0.65);
+    if (bw >= 1.2) ctx.fillRect(x - bwBody / 2, scale.y(Math.max(b.o, b.c)), bwBody, Math.max(1, Math.abs(scale.y(b.o) - scale.y(b.c))));
+    else ctx.fillRect(x - 0.5, scale.y(Math.max(b.o, b.c)), 1, Math.max(1, Math.abs(scale.y(b.o) - scale.y(b.c))));
+  }
+  /* --- 均线 --- */
+  if (IND) {
+    drawLine(IND.ema5, COL.ema5, 0, S.mainH, (v) => scale.y(v));
+    drawLine(IND.ema30, COL.ema30, 0, S.mainH, (v) => scale.y(v));
+    drawLine(IND.ema90, COL.ema90, 0, S.mainH, (v) => scale.y(v));
+    drawLine(IND.ema200, COL.ema200, 0, S.mainH, (v) => scale.y(v));
+  }
+  /* --- 成交量窗格 --- */
+  let vMax = 0;
+  for (let i = lo; i < hi; i++) vMax = Math.max(vMax, S.bars[i].v);
+  vMax = vMax * 1.1 || 1;
+  const vY = (v) => py.vol + S.volH - v / vMax * S.volH;
+  ctx.strokeStyle = COL.grid; ctx.beginPath(); ctx.moveTo(0, py.vol + 0.5); ctx.lineTo(plotW, py.vol + 0.5); ctx.stroke();
+  for (let i = lo; i < hi; i++) {
+    const b = S.bars[i];
+    ctx.fillStyle = b.c >= b.o ? COL.up : COL.down;
+    ctx.fillRect(xFor(i) - Math.max(0.5, bw * 0.32), vY(b.v), Math.max(1, bw * 0.65), py.vol + S.volH - vY(b.v));
+  }
+  if (IND) { drawLine(IND.volMa5, COL.volMa5, 0, 0, vY); drawLine(IND.volMa10, COL.volMa10, 0, 0, vY); }
+  ctx.font = `400 11px ${FONT}`; ctx.fillStyle = COL.axisGray;
+  ctx.fillText(fmtUsd(vMax / 1.1).replace('$', ''), plotW + AXIS_GAP, py.vol + 8);
+  /* --- MACD 窗格 --- */
+  let mMax = 0;
+  if (IND) for (let i = lo; i < hi; i++) {
+    for (const v of [IND.dif[i], IND.dea[i], IND.hist[i]]) if (isFinite(v)) mMax = Math.max(mMax, Math.abs(v));
+  }
+  mMax = mMax * 1.1 || 1;
+  const mY = (v) => py.macd + S.macdH / 2 - v / mMax * (S.macdH / 2);
+  ctx.strokeStyle = COL.grid; ctx.beginPath();
+  ctx.moveTo(0, py.macd + 0.5); ctx.lineTo(plotW, py.macd + 0.5);
+  ctx.moveTo(0, Math.round(mY(0)) + 0.5); ctx.lineTo(plotW, Math.round(mY(0)) + 0.5); ctx.stroke();
+  if (IND) {
+    for (let i = lo; i < hi; i++) {
+      const v = IND.hist[i];
+      if (!isFinite(v)) continue;
+      const prev = i > 0 ? IND.hist[i - 1] : NaN;
+      const expanding = !isFinite(prev) || Math.abs(v) >= Math.abs(prev);
+      const x = xFor(i) - Math.max(0.5, bw * 0.32), w = Math.max(1, bw * 0.65);
+      const y1 = mY(Math.max(0, v)), y2 = mY(Math.min(0, v));
+      ctx.strokeStyle = ctx.fillStyle = v >= 0 ? COL.up : COL.down;
+      if (expanding) ctx.fillRect(x, y1, w, Math.max(1, y2 - y1));
+      else ctx.strokeRect(x + 0.5, y1 + 0.5, Math.max(1, w - 1), Math.max(1, y2 - y1 - 1));
+    }
+    drawLine(IND.dif, COL.dif, 0, 0, mY); drawLine(IND.dea, COL.dea, 0, 0, mY);
+  }
+  ctx.fillStyle = COL.axisGray; ctx.font = `400 11px ${FONT}`;
+  ctx.fillText('MACD', plotW + AXIS_GAP, py.macd + 8);
+  /* --- 窗格分隔线 --- */
+  ctx.fillStyle = COL.grid;
+  ctx.fillRect(0, S.mainH, W, 1); ctx.fillRect(0, py.macd - DIV + 3, W, 1); ctx.fillRect(0, py.time, W, 1);
+  /* --- 现价虚线与标签 --- */
+  const lastBar = S.bars[S.bars.length - 1];
+  const livePx = S.liveMark || (lastBar ? lastBar.c : 0);
+  if (livePx > 0) {
+    const y = scale.y(livePx);
+    if (y >= 0 && y <= S.mainH) {
+      const upDay = lastBar ? livePx >= lastBar.o : true;
+      ctx.strokeStyle = upDay ? COL.up : COL.down; ctx.setLineDash([4, 4]);
+      ctx.beginPath(); ctx.moveTo(0, Math.round(y) + 0.5); ctx.lineTo(plotW, Math.round(y) + 0.5); ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.fillStyle = upDay ? COL.up : COL.down;
+      const th = 20;
+      ctx.beginPath(); ctx.roundRect(plotW + 2, y - th / 2, AXIS_W - 6, th, 4); ctx.fill();
+      ctx.fillStyle = '#fff'; ctx.font = `500 14px ${FONT}`; ctx.textAlign = 'center';
+      ctx.fillText(fmtPrice(livePx), plotW + AXIS_W / 2, y);
+      ctx.textAlign = 'left';
+    }
+  }
+  /* --- 十字线 --- */
+  if (S.mouse && S.mouse.inside && !S.mouse.dragging) {
+    ctx.strokeStyle = 'rgba(31,45,56,.35)'; ctx.setLineDash([4, 4]);
+    ctx.beginPath();
+    ctx.moveTo(Math.round(S.mouse.x) + 0.5, 0); ctx.lineTo(Math.round(S.mouse.x) + 0.5, py.time);
+    if (S.mouse.y < S.mainH) { ctx.moveTo(0, Math.round(S.mouse.y) + 0.5); ctx.lineTo(plotW, Math.round(S.mouse.y) + 0.5); }
+    ctx.stroke(); ctx.setLineDash([]);
+  }
+  updateHomeBtn();
+}
+
+/* ================= 读数行 / 悬停卡 ================= */
+function updateReadout(i) {
+  const el = $('readout');
+  if (!S.bars.length) { el.innerHTML = ''; return; }
+  const idx = i >= 0 ? i : S.bars.length - 1;
+  const b = S.bars[idx], prev = S.bars[idx - 1];
+  const chg = prev ? (b.c / prev.c - 1) * 100 : 0;
+  const amp = (b.h - b.l) / b.l * 100;
+  const ema = (arr, col, name) => `<span><span style="color:${col}">${name}</span> <b>${arr && isFinite(arr[idx]) ? fmtPrice(arr[idx]) : '—'}</b></span>`;
+  const mv = (arr, name) => `<span>${name} <b>${IND && isFinite(arr[idx]) ? fmtUsd(arr[idx]).replace('$', '') : '—'}</b></span>`;
+  el.innerHTML =
+    `<span>${barTime(b.t)}</span>` +
+    `<span>开 <b>${fmtPrice(b.o)}</b></span><span>高 <b>${fmtPrice(b.h)}</b></span>` +
+    `<span>低 <b>${fmtPrice(b.l)}</b></span><span>收 <b>${fmtPrice(b.c)}</b></span>` +
+    `<span>涨跌 <b style="color:${chg >= 0 ? COL.up : COL.down}">${fmtPct(chg, 2)}</b></span>` +
+    `<span>振幅 <b>${amp.toFixed(2)}%</b></span>` +
+    ema(IND && IND.ema5, COL.ema5, 'EMA5') + ema(IND && IND.ema30, COL.ema30, 'EMA30') +
+    ema(IND && IND.ema90, COL.ema90, 'EMA90') + ema(IND && IND.ema200, COL.ema200, 'EMA200') +
+    `<span>量 <b>${fmtUsd(b.v * b.c).replace('$', '$')}</b></span>` +
+    `<span><span style="color:${COL.dif}">DIF</span> <b>${IND && isFinite(IND.dif[idx]) ? IND.dif[idx].toFixed(2) : '—'}</b></span>` +
+    `<span><span style="color:${COL.dea}">DEA</span> <b>${IND && isFinite(IND.dea[idx]) ? IND.dea[idx].toFixed(2) : '—'}</b></span>`;
+}
+function showCard(c, mx, my) {
+  const card = $('hoverCard');
+  const color = c.side === 'long' ? COL.long : COL.short;
+  card.style.borderColor = color;
+  card.innerHTML =
+    `<div class="r" style="font-size:15px;font-weight:700;color:${color}">${c.side === 'long' ? '多头清算簇' : '空头清算簇'}</div>` +
+    `<div class="r"><span class="lab">距现价 </span><span style="font-size:13px;font-weight:600;color:${color}">${fmtPct(c.distPct)}</span></div>` +
+    `<div class="r"><span class="lab">金额 </span><span style="font-size:15px;font-weight:700;color:${color}">${fmtM(c.totalUsd)}</span>` +
+    `<span style="font-size:13px;font-weight:600;color:${color}"> · ${c.whaleCount} 鲸</span></div>` +
+    `<div class="r"><span class="lab">价位 </span><span style="font-size:13px;font-weight:600;color:${color}">${fmtPrice(c.lowPx)} – ${fmtPrice(c.highPx)}</span></div>`;
+  card.style.display = 'block';
+  const wrapW = $('chartWrap').clientWidth;
+  let left = mx + 16, top = my - 20;
+  if (left + 214 > wrapW) left = mx - 220;
+  top = Math.max(4, Math.min(top, S.mainH - 110));
+  card.style.left = left + 'px'; card.style.top = top + 'px';
+}
+function hideCard() { $('hoverCard').style.display = 'none'; }
+
+/* ================= 视图 ================= */
+function isHome() {
+  return Math.abs(S.endX - (S.bars.length + 6)) < 0.01 && Math.abs(S.count - S.homeCount) < 0.01;
+}
+function goHome(redraw = true) {
+  S.count = S.homeCount;
+  S.endX = S.bars.length + 6; // home：末根 + 固定 6 个空槽
+  if (redraw) draw();
+}
+function clampView() {
+  S.count = Math.min(Math.max(S.count, 20), Math.max(200, S.bars.length + 60));
+  const minStart = -S.count, maxStart = S.bars.length; // 两侧各约一屏自由过冲
+  let s = S.endX - S.count;
+  s = Math.min(Math.max(s, minStart), maxStart);
+  S.endX = s + S.count;
+}
+function updateHomeBtn() { $('homeBtn').style.display = isHome() ? 'none' : 'block'; }
+async function maybePrefetch() {
+  if (S.loadingOlder || !S.bars.length) return;
+  if (startX() > S.count * 2) return;
+  const earliest = S.bars[0].t;
+  const meta = (S.candlesTf || {})[S.tf];
+  if (meta && meta.earliest && earliest <= meta.earliest) return;
+  S.loadingOlder = true;
+  try { await loadCandles(earliest); } catch { /* 忽略，下次再试 */ }
+  S.loadingOlder = false;
+  draw();
+}
+
+/* ================= 交互 ================= */
+let drag = null;
+canvas.addEventListener('pointerdown', (e) => {
+  canvas.setPointerCapture(e.pointerId);
+  drag = { x: e.offsetX, y: e.offsetY, endX: S.endX, volH: S.volH, macdH: S.macdH, moved: false,
+           divider: dividerAt(e.offsetY) };
+  canvas.classList.add('dragging');
+});
+canvas.addEventListener('pointermove', (e) => {
+  const py = paneY();
+  if (drag) {
+    const dx = e.offsetX - drag.x, dy = e.offsetY - drag.y;
+    if (Math.abs(dx) + Math.abs(dy) > 3) drag.moved = true;
+    if (drag.divider === 1) { S.volH = Math.min(160, Math.max(50, drag.volH + dy)); resize(); }
+    else if (drag.divider === 2) { S.macdH = Math.min(180, Math.max(60, drag.macdH + dy)); resize(); renderLadder(); }
+    else if (drag.moved) {
+      S.endX = drag.endX + dx / (plotW / S.count); // 往右拉 = 看更早
+      clampView(); maybePrefetch();
+    }
+    S.mouse = { x: e.offsetX, y: e.offsetY, inside: true, dragging: true };
+    draw(); return;
+  }
+  S.mouse = { x: e.offsetX, y: e.offsetY, inside: true, dragging: false };
+  const i = Math.floor(idxFloatForX(e.offsetX));
+  S.hoverI = i >= 0 && i < S.bars.length ? i : -1;
+  updateReadout(S.hoverI);
+  // 色块命中：主窗格内按价格命中显示簇
+  S.hoverCluster = null;
+  if (e.offsetY < S.mainH && scale && S.snap) {
+    const price = scale.inv(e.offsetY);
+    const clusters = displayedClusters();
+    const maxAmt = Math.max(1, ...clusters.map((c) => c.totalUsd));
+    void maxAmt;
+    S.hoverCluster = clusters.find((c) => price >= c.lowPx && price <= c.highPx) || null;
+    if (S.hoverCluster) showCard(S.hoverCluster, e.offsetX, e.offsetY);
+    else hideCard();
+  } else hideCard();
+  void py;
+  draw();
+});
+const endDrag = () => { drag = null; canvas.classList.remove('dragging'); if (S.mouse) S.mouse.dragging = false; draw(); };
+canvas.addEventListener('pointerup', endDrag);
+canvas.addEventListener('pointercancel', endDrag);
+canvas.addEventListener('pointerleave', () => { S.mouse = null; S.hoverCluster = null; hideCard(); updateReadout(-1); draw(); });
+function dividerAt(y) {
+  const py = paneY();
+  if (Math.abs(y - (S.mainH + DIV / 2)) <= 5) return 1;
+  if (Math.abs(y - (py.macd - DIV / 2)) <= 5) return 2;
+  return 0;
+}
+canvas.addEventListener('wheel', (e) => {
+  e.preventDefault();
+  const f = (e.offsetX) / plotW, anchor = startX() + f * S.count;
+  const factor = e.deltaY < 0 ? 0.88 : 1.14;
+  S.count = S.count * factor;
+  clampView();
+  S.endX = anchor + (1 - f) * S.count;
+  clampView(); maybePrefetch(); draw();
+}, { passive: false });
+canvas.addEventListener('dblclick', () => goHome());
+canvas.addEventListener('keydown', (e) => {
+  const stepBars = e.shiftKey ? 10 : 1;
+  if (e.key === 'ArrowRight') { S.endX += stepBars; clampView(); draw(); }
+  else if (e.key === 'ArrowLeft') { S.endX -= stepBars; clampView(); maybePrefetch(); draw(); }
+  else if (e.key === 'Home') { e.preventDefault(); goHome(); }
+});
+$('homeBtn').addEventListener('click', () => goHome());
+
+/* ================= 控件 ================= */
+const tabsEl = $('coinTabs');
+for (const c of COINS) {
+  const b = document.createElement('button');
+  b.textContent = c; b.dataset.coin = c;
+  b.addEventListener('click', async () => { if (S.coin !== c) { S.coin = c; S.liveMark = 0; await switchCoin(); } });
+  tabsEl.appendChild(b);
+}
+const tfEl = $('tfCtl');
+for (const [tf, label] of TF_LIST) {
+  const b = document.createElement('button');
+  b.textContent = label; b.dataset.tf = tf;
+  if (tf === S.tf) b.classList.add('on');
+  b.addEventListener('click', async () => {
+    if (S.tf === tf) return;
+    S.tf = tf;
+    tfEl.querySelectorAll('button').forEach((x) => x.classList.toggle('on', x.dataset.tf === tf));
+    await loadCandles(); goHome(); updateReadout(-1);
+  });
+  tfEl.appendChild(b);
+}
+$('modeCtl').addEventListener('click', (e) => {
+  const b = e.target.closest('button'); if (!b) return;
+  S.mode = b.dataset.mode;
+  $('modeCtl').querySelectorAll('button').forEach((x) => x.classList.toggle('on', x === b));
+  draw();
+});
+$('axisCtl').addEventListener('click', (e) => {
+  const b = e.target.closest('button'); if (!b) return;
+  S.axis = b.dataset.axis;
+  $('axisCtl').querySelectorAll('button').forEach((x) => x.classList.toggle('on', x === b));
+  draw();
+});
+async function switchCoin() {
+  await loadDashboard();
+  await loadCandles();
+  goHome(); updateReadout(-1);
+}
+
+/* ================= 新鲜度检查：打开时 / 回前台 / 15 分钟兜底 ================= */
+let lastSnapAt = '';
+async function checkFresh() {
+  try {
+    const st = await getJSON('/api/status');
+    const t = st.snaps && st.snaps[S.coin];
+    if (t && lastSnapAt && t !== lastSnapAt) { lastSnapAt = t; await loadDashboard(); draw(); }
+    else if (t) lastSnapAt = t;
+  } catch { /* 忽略 */ }
+}
+document.addEventListener('visibilitychange', () => { if (!document.hidden) checkFresh(); });
+
+/* ================= 启动 ================= */
+(async function init() {
+  resize();
+  window.addEventListener('resize', () => { resize(); draw(); });
+  await loadDashboard();
+  await loadCandles();
+  goHome(); updateReadout(-1);
+  if (S.snap) lastSnapAt = S.snap.fetchedAt;
+  await hlLive(); draw();
+  setInterval(hlLive, 10000);          // 行情层 10 秒轮询（浏览器直连 HL）
+  setInterval(checkFresh, 15 * 60000); // 快照新鲜度 15 分钟兜底
+})();
+</script>
+</body>
+</html>

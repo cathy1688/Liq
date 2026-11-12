@@ -1,0 +1,15 @@
+name = "liq"
+main = "dist/index.js"
+compatibility_date = "2026-11-12"
+
+account_id = "26fbb58220125144d2d1af3a4ae922bb"
+
+# 每 10 分钟推进一次管线状态机（harvest → hlscan → lighterpoll → finalize → candles）
+# 每阶段 ≤40 个外部子请求；快照对外每小时至少发布一版（管线内 55 分钟保底逻辑）
+[triggers]
+crons = ["*/10 * * * *"]
+
+# KV：快照 / K 线 / Lighter 名单 / 状态机（namespace 已创建，2026-11-12）
+[[kv_namespaces]]
+binding = "CACHE"
+id = "d3eadb32b80d4738980f3702c2968acf"
