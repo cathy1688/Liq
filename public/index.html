@@ -224,12 +224,16 @@ async function loadDashboard() {
   S.markets = d.markets || []; S.snap = d.snapshot; S.candlesTf = d.candlesTf || {};
   renderHeader(); renderLists(); renderLadder();
 }
+let loadGen = 0; // 切换竞态代号：慢返回的旧周期数据不许覆盖新周期
 async function loadCandles(before) {
   const key = `${S.coin}:${S.tf}`;
-  if (!before && cache.has(key)) { S.bars = cache.get(key); return; }
+  if (!before && cache.has(key)) { S.bars = cache.get(key); computeIndicators(); return; } // 缓存命中也必须重算指标（旧版漏算 → 切回时 EMA/MACD 读旧序列）
+  const gen = before ? loadGen : ++loadGen;
+  const barsRef = S.bars;
   const q = before ? `&before=${before}&limit=1500` : '&limit=1500';
   const d = await getJSON(`/api/candles?coin=${S.coin}&tf=${S.tf}${q}`);
-  const rows = (d.bars || []).map((b) => ({ ...b }));
+  if (gen !== loadGen || (before && S.bars !== barsRef)) return; // 期间已切换，丢弃
+  const rows = (d.bars || []).filter((b) => b.o > 0 && b.h > 0 && b.l > 0 && b.c > 0).map((b) => ({ ...b }));
   if (before) {
     const have = new Set(S.bars.map((b) => b.t));
     const add = rows.filter((b) => !have.has(b.t));
@@ -270,11 +274,14 @@ async function hlLive() {
   try {
     const last = S.bars[S.bars.length - 1];
     if (last) {
-      const j = await HL_POST({ type: 'candleSnapshot', req: { coin: S.coin, interval: S.tf, startTime: last.t, endTime: Date.now() } });
+      const reqCoin = S.coin, reqTf = S.tf;
+      const j = await HL_POST({ type: 'candleSnapshot', req: { coin: reqCoin, interval: reqTf, startTime: last.t, endTime: Date.now() } });
+      if (reqCoin !== S.coin || reqTf !== S.tf) return; // 请求期间已切换：这批 K 线不属于当前序列，丢弃防串档
       const wasHome = isHome();
       for (const c of j || []) {
         // 只更新价、不动量：HL 的量是永续口径（万级 BTC/日），与存储的 Bitfinex 现货量（千级）
         // 不是一个尺度，混用会把量窗格的标尺冲爆（图2 巨型量柱的根源）。量以存储序列为准、随快照刷新。
+        if (!(+c.o > 0 && +c.h > 0 && +c.l > 0 && +c.c > 0)) continue;
         const nb = { t: c.t, o: +c.o, h: +c.h, l: +c.l, c: +c.c, v: NaN };
         const tail = S.bars[S.bars.length - 1];
         if (tail && tail.t === nb.t) { nb.v = tail.v; S.bars[S.bars.length - 1] = nb; }
@@ -435,9 +442,12 @@ function computeScale() {
     const c = S.liveMark || (S.snap && S.snap.markPx) || (S.bars.length ? S.bars[S.bars.length - 1].c : 100);
     mn = c * 0.92; mx = c * 1.08;
   }
-  const pad = (mx - mn) * 0.06 || mx * 0.02;
-  mn -= pad; mx += pad;
-  const a = Math.log10(Math.max(mn, 1e-9)), b = Math.log10(mx);
+  // 留白在对数空间里加：线性留白在宽幅序列（月线 850→126,000）上会把 mn 垫成负数，
+  // log10 被钳到 1e-9 后轴面爆炸（2026-11-12 周/月线事故的根）
+  const la0 = Math.log10(Math.max(mn, 1e-9)), lb0 = Math.log10(mx);
+  const lpad = (lb0 - la0) * 0.04 || 0.02;
+  const a = la0 - lpad, b = lb0 + lpad;
+  mn = Math.pow(10, a); mx = Math.pow(10, b);
   scale = { y: (p) => (b - Math.log10(Math.max(p, 1e-9))) / (b - a) * S.mainH,
             inv: (y) => Math.pow(10, b - y / S.mainH * (b - a)), mn, mx, la: a, lb: b };
 }
