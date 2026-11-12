@@ -38,3 +38,7 @@ npm run verify    # 本地实跑一轮（需要能直连 HL / Lighter / Bitfinex
 刷新拆成状态机阶段（harvest → hlscan → lighterpoll → finalize → candles），cron 每 10 分钟推进
 一个阶段、每阶段 ≤40 个外部子请求；快照每小时至少发布一版。Lighter 只收清算价通过合理性
 过滤的仓位（全仓账户的 0/哨兵值剔除），属样本覆盖而非全量，页面页脚有标注。
+
+---
+
+部署：Cloudflare Workers Builds 已连接本仓库（2026-11-12），push 到 main 即自动构建部署 → https://liq.bittensor.workers.dev
