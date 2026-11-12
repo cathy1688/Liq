@@ -344,16 +344,26 @@ function createPipeline(deps) {
         const { markets, marks } = await fetchMeta();
         state.markets = markets; state.marks = marks;
         const wl = (await kv.get('lighter:watchlist')) || {};
-        for (const coin of COINS) {
-          const trades = await fetchLighterTrades(LIGHTER_MARKETS[coin]);
-          for (const t of trades) {
-            for (const id of [t.ask_account_id, t.bid_account_id]) {
-              const n = num(id);
-              if (isFinite(n) && n > 0 && n < SENTINEL_ACCOUNT) wl[String(Math.trunc(n))] = now();
+        if (!state.ltCooldownUntil || now() >= state.ltCooldownUntil) {
+          try {
+            for (const coin of COINS) {
+              const trades = await fetchLighterTrades(LIGHTER_MARKETS[coin]);
+              for (const t of trades) {
+                for (const id of [t.ask_account_id, t.bid_account_id]) {
+                  const n = num(id);
+                  if (isFinite(n) && n > 0 && n < SENTINEL_ACCOUNT) wl[String(Math.trunc(n))] = now();
+                }
+              }
             }
+            await kv.put('lighter:watchlist', wl);
+          } catch (e) {
+            // Lighter 限流/故障不得堵死整条管线：名单沿用存量，冷却 30 分钟后再试，本阶段照常推进
+            state.ltCooldownUntil = now() + 30 * 60 * 1000;
+            report.actions.push(`harvest:lighter-deferred:${String(e && e.message || e).slice(0, 80)}`);
           }
+        } else {
+          report.actions.push('harvest:lighter-cooldown');
         }
-        await kv.put('lighter:watchlist', wl);
         report.actions.push(`harvest:watchlist=${Object.keys(wl).length}`);
         state.stage = 'hlscan'; state.hlCursor = 0;
         await kv.put('stage:hlpos', []);
