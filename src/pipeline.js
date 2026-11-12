@@ -50,14 +50,26 @@ const isPos = (p) => p && isFinite(p.liqPx) && p.liqPx > 0 && isFinite(p.notiona
 export function clusterPositions(positions, mark) {
   const out = [];
   for (const side of [1, -1]) {
-    const rows = positions.filter((p) => p.side === side).sort((a, b) => a.liqPx - b.liqPx);
+    // 分区口径（据原版 artifact 发布快照反推核实，2026-11-12）：按距现价的 1% 价格格归格，
+    // 同侧相邻格合并成带；带边 = 格边 mark×(1+k%)，故每带至少 1% 宽、distPct = 带中心 %。
+    // 旧口径（相邻清算价 ≤1% 链式合并、带边取实际清算价）会产生大量零宽单鲸簇，图上只剩发丝线。
+    const cells = new Map(); // cellIdx -> { totalUsd, whales }
+    for (const p of positions) {
+      if (p.side !== side) continue;
+      const idx = Math.floor((p.liqPx / mark - 1) * 100);
+      let c = cells.get(idx);
+      if (!c) { c = { totalUsd: 0, whales: new Set() }; cells.set(idx, c); }
+      c.totalUsd += p.notional; c.whales.add(p.id);
+    }
     const groups = [];
-    for (const p of rows) {
+    for (const idx of [...cells.keys()].sort((a, b) => a - b)) {
+      const c = cells.get(idx);
       const g = groups[groups.length - 1];
-      if (g && p.liqPx - g.highPx <= mark * 0.01) {
-        g.highPx = p.liqPx; g.totalUsd += p.notional; g.whales.add(p.id);
+      if (g && idx === g.hiCell + 1) {
+        g.hiCell = idx; g.totalUsd += c.totalUsd;
+        for (const w of c.whales) g.whales.add(w);
       } else {
-        groups.push({ side, lowPx: p.liqPx, highPx: p.liqPx, totalUsd: p.notional, whales: new Set([p.id]) });
+        groups.push({ loCell: idx, hiCell: idx, totalUsd: c.totalUsd, whales: new Set(c.whales) });
       }
     }
     // 门槛：≥$3M，或该侧金额 top5 保底；每侧最多 8 簇（按金额取大）
@@ -66,12 +78,12 @@ export function clusterPositions(positions, mark) {
     let kept = groups.filter((g) => g.totalUsd >= CLUSTER_MIN_USD || top5.has(g));
     kept = [...kept].sort((a, b) => b.totalUsd - a.totalUsd).slice(0, CLUSTER_MAX_PER_SIDE);
     for (const g of kept) {
-      const mid = (g.lowPx + g.highPx) / 2;
       out.push({
         side: side === 1 ? 'long' : 'short',
-        lowPx: g.lowPx, highPx: g.highPx, totalUsd: g.totalUsd,
+        lowPx: mark * (1 + g.loCell / 100), highPx: mark * (1 + (g.hiCell + 1) / 100),
+        totalUsd: g.totalUsd,
         whaleCount: g.whales.size,
-        distPct: mark > 0 ? (mid / mark - 1) * 100 : 0,
+        distPct: (g.loCell + g.hiCell + 1) / 2,
       });
     }
   }
