@@ -452,8 +452,8 @@ function computeScale() {
   // （日线 5,000、周线 10,000、月线 20,000 这一类），不再出现 81,840→96,033 这种每图都不一样的对数格
   const pad = (mx - mn) * 0.06 || mx * 0.02;
   mn -= pad; mx += pad;
-  const step = niceStep((mx - mn) / 9);
-  const loP = Math.floor(mn / step) * step, hiP = Math.ceil(mx / step) * step;
+  const step = niceStep((mx - mn) / 10);
+  const loP = Math.max(0, Math.floor(mn / step) * step), hiP = Math.ceil(mx / step) * step; // 价格没有负数：下界钳到 0（月线低点 728 被留白垫穿时出现过 -20,000）
   scale = { y: (p) => (hiP - p) / (hiP - loP) * S.mainH,
             inv: (y) => hiP - y / S.mainH * (hiP - loP), mn: loP, mx: hiP, step, loP, hiP };
 }
