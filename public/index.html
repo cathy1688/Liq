@@ -516,9 +516,9 @@ function draw() {
   }
   ctx.textAlign = 'left';
   /* --- 清算色块（平填）：对数轴上周/月线一格仅 2~3px、按真实高度画会细成条纹——绘制前排布一遍：
-     最小高度 9px、间距 ≥3px，以离现价最近的带为锚向上下摊开（锚带位置不动、越远的带位移越大），
-     与日线一样一条条分得开（用户 2026-11-13 三度要求；价位数据不动、悬停卡与列表仍是准数。
-     区外贴边标记维持旧版行为） --- */
+     最小高度 8px、目标间距 2px，以离现价最近的带为锚向上下轻推，但每条带位移封顶 14px——
+     带子必须留在自己的价位上（2026-11-13 无封顶摊开把月线摊成脱离价位的条纹墙、被用户否决）；
+     挤在 14px 内实在分不开的同向相邻带，允许贴住（透明度不同、交界仍有色阶）。区外贴边标记维持旧版行为 --- */
   const clusters = displayedClusters();
   const maxAmt = Math.max(1, ...clusters.map((c) => c.totalUsd));
   const bandFill = (c) => {
@@ -534,17 +534,21 @@ function draw() {
     if (yBot < 0) { ctx.fillStyle = bandFill(c); ctx.fillRect(0, 0, plotW, 3); continue; }          // 整簇在可见区上方 → 顶部边缘标记
     if (yTop > S.mainH) { ctx.fillStyle = bandFill(c); ctx.fillRect(0, S.mainH - 3, plotW, 3); continue; } // 整簇在下方 → 底部边缘标记
     const t = Math.max(0, yTop), b = Math.min(S.mainH, yBot);
-    const mid = (t + b) / 2, h = Math.max(9, b - t);
-    layout.push({ c, top: mid - h / 2, bot: mid + h / 2 });
+    const mid = (t + b) / 2, h = Math.max(8, b - t);
+    layout.push({ c, top: mid - h / 2, bot: mid + h / 2, mid, h });
   }
-  layout.sort((a, b) => (a.top + a.bot) - (b.top + b.bot));
+  layout.sort((a, b) => a.mid - b.mid);
   if (layout.length) {
-    const GAP = 3;
+    const GAP = 2, CAP = 14; // 位移封顶：带子离真实中心最多 14px
+    const clampCap = (r) => {
+      const cc = Math.max(r.mid - CAP, Math.min(r.mid + CAP, (r.top + r.bot) / 2));
+      r.top = cc - r.h / 2; r.bot = cc + r.h / 2;
+    };
     const markY = S.snap && S.snap.markPx ? scale.y(S.snap.markPx) : S.mainH / 2;
     let ai = 0, ad = Infinity;
-    layout.forEach((r, i) => { const d = Math.abs((r.top + r.bot) / 2 - markY); if (d < ad) { ad = d; ai = i; } });
-    for (let i = ai - 1; i >= 0; i--) { const n = layout[i + 1]; if (layout[i].bot > n.top - GAP) { const d = layout[i].bot - (n.top - GAP); layout[i].top -= d; layout[i].bot -= d; } }
-    for (let i = ai + 1; i < layout.length; i++) { const p = layout[i - 1]; if (layout[i].top < p.bot + GAP) { const d = (p.bot + GAP) - layout[i].top; layout[i].top += d; layout[i].bot += d; } }
+    layout.forEach((r, i) => { const d = Math.abs(r.mid - markY); if (d < ad) { ad = d; ai = i; } });
+    for (let i = ai - 1; i >= 0; i--) { const n = layout[i + 1]; if (layout[i].bot > n.top - GAP) { const d = layout[i].bot - (n.top - GAP); layout[i].top -= d; layout[i].bot -= d; } clampCap(layout[i]); }
+    for (let i = ai + 1; i < layout.length; i++) { const p = layout[i - 1]; if (layout[i].top < p.bot + GAP) { const d = (p.bot + GAP) - layout[i].top; layout[i].top += d; layout[i].bot += d; } clampCap(layout[i]); }
     const over = layout[layout.length - 1].bot - S.mainH;
     if (over > 0) layout.forEach((r) => { r.top -= over; r.bot -= over; });
     if (layout[0].top < 0) { const d = -layout[0].top; layout.forEach((r) => { r.top += d; r.bot += d; }); }
