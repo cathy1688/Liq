@@ -103,7 +103,7 @@ export default {
 
     // 静态前端（构建时已内联进 INDEX_HTML）
     return new Response(INDEX_HTML, {
-      headers: { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-cache' },
+      headers: { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' }, // 页面不落缓存：修完用户还看到旧版已发生两次（2026-11-13）
     });
   },
 };
