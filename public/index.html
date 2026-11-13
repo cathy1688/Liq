@@ -378,7 +378,7 @@ function renderLadder() {
   if (rangeEl) rangeEl.textContent = '同主图窗口';
   const clusters = displayedClusters();
   const extLo = scale.cMin / 1.05, extHi = scale.cMax * 1.05;
-  const yHi = Math.max(0, scale.y(extHi)), yLo = Math.min(mainH, scale.y(extLo));
+  const yHi = Math.max(0, scale.y(extHi)), yLo = Math.min(S.mainH, scale.y(extLo));
   const mark = S.snap.markPx;
   const markY = scale.y(mark);
   let offTL = 0, offTS = 0, offBL = 0, offBS = 0;
@@ -430,7 +430,7 @@ function renderLadder() {
     }
   }
   // 现价虚线（与主图同一 y）
-  if (markY >= 0 && markY <= mainH) {
+  if (markY >= 0 && markY <= S.mainH) {
     g.strokeStyle = 'rgba(31,45,56,.45)'; g.lineWidth = 1; g.setLineDash([4, 3]);
     g.beginPath(); g.moveTo(0, markY); g.lineTo(cw, markY); g.stroke(); g.setLineDash([]);
     g.font = '10px Inter, system-ui, sans-serif'; g.fillStyle = '#5B6B74'; g.textAlign = 'right';
@@ -438,7 +438,7 @@ function renderLadder() {
     g.textAlign = 'left';
   }
   // 图外汇总 + 注脚（主图下方空区，面板总高 = 图表总高 H）
-  let oy = mainH + 26;
+  let oy = S.mainH + 26;
   g.font = '600 11px Inter, system-ui, sans-serif';
   if (offTS >= 1e5) { g.fillStyle = COL.short; g.fillText(`上方图外 · 空 ${fmtM(offTS)}`, 8, oy); oy += 16; }
   if (offTL >= 1e5) { g.fillStyle = COL.long; g.fillText(`上方图外 · 多 ${fmtM(offTL)}`, 8, oy); oy += 16; }
