@@ -526,8 +526,9 @@ function draw() {
   const layout = [];
   for (const c of clusters) {
     const yTop0 = scale.y(c.highPx), yBot0 = scale.y(c.lowPx);
-    if (yBot0 < 0) { layout.push({ c, out: 'top' }); continue; }
-    if (yTop0 > S.mainH) { layout.push({ c, out: 'bottom' }); continue; }
+    // 整簇在可见区之外：不画（旧版在顶/底缘贴 3px 标记，用户 2026-11-13 否决——色块只许出现在网格内；
+    // 区外簇在右侧阶梯与下方列表里照常可见）
+    if (yBot0 < 0 || yTop0 > S.mainH) continue;
     let yT = Math.max(0, yTop0), yB = Math.min(S.mainH, yBot0);
     if (yB - yT < MINBH) {
       const mid = (yT + yB) / 2;
@@ -551,13 +552,9 @@ function draw() {
     const alpha = hov ? (c.side === 'short' ? Math.min(0.64, blockAlpha(c.totalUsd, maxAmt) + 0.10) : 0.6)
                       : blockAlpha(c.totalUsd, maxAmt);
     ctx.fillStyle = rgba(color, alpha);
-    if (L.out === 'top') ctx.fillRect(0, 0, plotW, 3);                    // 整簇在可见区上方 → 顶部边缘标记
-    else if (L.out === 'bottom') ctx.fillRect(0, S.mainH - 3, plotW, 3); // 整簇在下方 → 底部边缘标记
-    else {
-      const h = L.yB - L.yT;
-      const inset = h > 10 ? 1 : 0; // 高块上下各让 1px，相邻块恒有白缝、不连成一片
-      ctx.fillRect(0, L.yT + inset, plotW, Math.max(1, h - inset * 2));
-    }
+    const h = L.yB - L.yT;
+    const inset = h > 10 ? 1 : 0; // 高块上下各让 1px，相邻块恒有白缝、不连成一片
+    ctx.fillRect(0, L.yT + inset, plotW, Math.max(1, h - inset * 2));
   }
   /* --- K 线 --- */
   for (let i = lo; i < hi; i++) {
@@ -743,13 +740,8 @@ canvas.addEventListener('pointermove', (e) => {
     // 旧版按价格区间命中，周/月线一格只有 2~3px，根本点不中（用户原话「点击很麻烦，太细了」）
     let best = null, bestD = 1e9;
     for (const L of S.bandLayout || []) {
-      let d;
-      if (L.out === 'top') { if (e.offsetY > 12) continue; d = e.offsetY; }
-      else if (L.out === 'bottom') { if (e.offsetY < S.mainH - 12) continue; d = S.mainH - e.offsetY; }
-      else {
-        if (e.offsetY < L.yT - 5 || e.offsetY > L.yB + 5) continue;
-        d = Math.abs((L.yT + L.yB) / 2 - e.offsetY);
-      }
+      if (e.offsetY < L.yT - 5 || e.offsetY > L.yB + 5) continue;
+      const d = Math.abs((L.yT + L.yB) / 2 - e.offsetY);
       if (d < bestD) { bestD = d; best = L.c; }
     }
     S.hoverCluster = best;
