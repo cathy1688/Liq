@@ -447,6 +447,15 @@ function computeScale() {
     const c = S.liveMark || (S.snap && S.snap.markPx) || (S.bars.length ? S.bars[S.bars.length - 1].c : 100);
     mn = c * 0.92; mx = c * 1.08;
   }
+  // 清算簇纳入定轴（2026-11-13 用户问「14–15 万都有清算，为什么没有表示出来」）：轴只按 K 线定范围时，
+  // 贴着范围外的大簇（如月线 148,494–149,205 的 $44.6M 空头簇）会被整根切在网格外。与 K 线范围相交、
+  // 或超出不超过 20% 的已显示簇并入范围；再远的（日线看 +109%）不拉伸轴面，仍在阶梯/列表里呈现
+  if (S.snap && S.mode !== 'off' && isFinite(mn)) {
+    const extLo = mn * 0.8, extHi = mx * 1.2;
+    for (const c of displayedClusters()) {
+      if (c.highPx >= extLo && c.lowPx <= extHi) { mn = Math.min(mn, c.lowPx); mx = Math.max(mx, c.highPx); }
+    }
+  }
   // AiCoin 式普通坐标（用户 2026-11-13 定，取代对数轴）：线性标尺 + 整数步长（1/2/2.5/5×10^n，
   // 按可见跨度÷9 取档），上下界对齐步长整数倍——所有周期同一套规则，刻度永远是整数字
   // （日线 5,000、周线 10,000、月线 20,000 这一类），不再出现 81,840→96,033 这种每图都不一样的对数格
