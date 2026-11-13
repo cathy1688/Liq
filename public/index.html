@@ -500,10 +500,15 @@ function draw() {
   }
   ctx.stroke();
   ctx.font = `400 13px ${FONT}`; ctx.fillStyle = COL.ink; ctx.textBaseline = 'middle'; ctx.textAlign = 'left';
+  let lastLy = -1;
   for (const p of gridPos) {
     const ly = Math.min(Math.max(scale.y(Math.pow(10, p)), 8), S.mainH - 8); // 标签钳进画布，防顶缘裁切
     ctx.fillText(fmtPrice(Math.pow(10, p)), plotW + AXIS_GAP, ly);
+    lastLy = ly;
   }
+  // 底部锚：轴底（下留白边界价）也标出来（用户 2026-11-13：K 线底部不标价格显得轻、脚悬空）；
+  // 与最低一根标线离得太近（<18px）时不加，防挤字。顶部呼吸线按他的规矩仍然不标
+  if (lastLy >= 0 && lastLy < S.mainH - 18) ctx.fillText(fmtPrice(scale.mn), plotW + AXIS_GAP, S.mainH - 8);
   // 时间竖线（与时间轴刻度对齐，贯穿三窗格）
   const tickBars = [1, 2, 5, 10, 20, 50, 100, 200, 500, 1000, 2000].find((n) => n * bw >= 110) || 2000;
   ctx.beginPath();
