@@ -564,8 +564,11 @@ function draw() {
     if (over > 0) layout.forEach((r) => { r.top -= over; r.bot -= over; });
     if (layout[0].top < 0) { const d = -layout[0].top; layout.forEach((r) => { r.top += d; r.bot += d; }); }
   }
-  S.bandLayout = layout;
-  for (const r of layout) { ctx.fillStyle = bandFill(r.c); ctx.fillRect(0, r.top, plotW, Math.max(1, r.bot - r.top)); }
+  // 绘制范围钳在价格史内：排布撑高/轻推不许把带子顶出最高价线、或沉到最低价线之外（呼吸区保持空白）
+  const yHi = scale.y(scale.cMax), yLo = scale.y(scale.cMin);
+  for (const r of layout) { r.top = Math.max(r.top, yHi); r.bot = Math.min(r.bot, yLo); }
+  S.bandLayout = layout.filter((r) => r.bot > r.top);
+  for (const r of S.bandLayout) { ctx.fillStyle = bandFill(r.c); ctx.fillRect(0, r.top, plotW, Math.max(1, r.bot - r.top)); }
   /* --- K 线 --- */
   for (let i = lo; i < hi; i++) {
     const b = S.bars[i], x = xFor(i), up = b.c >= b.o;
