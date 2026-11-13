@@ -434,6 +434,11 @@ const startX = () => S.endX - S.count;
 const xFor = (i) => (i - startX()) * (plotW / S.count) + (plotW / S.count) / 2;
 const idxFloatForX = (px) => startX() + px / (plotW / S.count);
 let scale = null;
+function niceStep(raw) {
+  const p = Math.pow(10, Math.floor(Math.log10(raw)));
+  const m = raw / p;
+  return (m <= 1 ? 1 : m <= 2 ? 2 : m <= 2.5 ? 2.5 : m <= 5 ? 5 : 10) * p;
+}
 function computeScale() {
   const lo = Math.max(0, Math.floor(startX())), hi = Math.min(S.bars.length, Math.ceil(S.endX));
   let mn = Infinity, mx = -Infinity;
@@ -442,15 +447,25 @@ function computeScale() {
     const c = S.liveMark || (S.snap && S.snap.markPx) || (S.bars.length ? S.bars[S.bars.length - 1].c : 100);
     mn = c * 0.92; mx = c * 1.08;
   }
-  // 留白在对数空间里加：线性留白在宽幅序列（月线 850→126,000）上会把 mn 垫成负数，
-  // log10 被钳到 1e-9 后轴面爆炸（2026-11-12 周/月线事故的根）
-  const la0 = Math.log10(Math.max(mn, 1e-9)), lb0 = Math.log10(mx);
-  const lpad = (lb0 - la0) * 0.04 || 0.02;
-  const a = la0 - lpad, b = lb0 + lpad;
-  mn = Math.pow(10, a); mx = Math.pow(10, b);
-  scale = { y: (p) => (b - Math.log10(Math.max(p, 1e-9))) / (b - a) * S.mainH,
-            inv: (y) => Math.pow(10, b - y / S.mainH * (b - a)), mn, mx, la: a, lb: b };
+  // AiCoin 式普通坐标（用户 2026-11-13 定，取代对数轴）：线性标尺 + 整数步长（1/2/2.5/5×10^n，
+  // 按可见跨度÷9 取档），上下界对齐步长整数倍——所有周期同一套规则，刻度永远是整数字
+  // （日线 5,000、周线 10,000、月线 20,000 这一类），不再出现 81,840→96,033 这种每图都不一样的对数格
+  const pad = (mx - mn) * 0.06 || mx * 0.02;
+  mn -= pad; mx += pad;
+  const step = niceStep((mx - mn) / 9);
+  const loP = Math.floor(mn / step) * step, hiP = Math.ceil(mx / step) * step;
+  scale = { y: (p) => (hiP - p) / (hiP - loP) * S.mainH,
+            inv: (y) => hiP - y / S.mainH * (hiP - loP), mn: loP, mx: hiP, step, loP, hiP };
 }
+const axisDecimals = (step) => {
+  const n = Math.floor(Math.log10(step));
+  const m = step / Math.pow(10, n);
+  return m > 2 && m < 3 ? Math.max(0, 1 - n) : Math.max(0, -n); // 2.5 步长多带一位小数
+};
+const fmtAxis = (v, step) => {
+  const d = axisDecimals(step);
+  return d > 0 ? v.toFixed(d) : Math.round(v).toLocaleString('en-US');
+};
 function displayedClusters() {
   if (!S.snap || S.mode === 'off') return [];
   if (S.mode === 'near') return S.snap.clusters.filter((c) => Math.abs(c.distPct) <= 30);
@@ -480,23 +495,20 @@ function draw() {
   computeScale();
   const bw = plotW / S.count;
   const lo = Math.max(0, Math.floor(startX())), hi = Math.min(S.bars.length, Math.ceil(S.endX));
-  /* --- 网格：对数等距，密度随纵轴跨度自适应（最底层） --- */
+  /* --- 网格：刻度线落在整数价位上、等距分布（最底层） --- */
   ctx.strokeStyle = COL.grid; ctx.lineWidth = 1;
-  // 固定 9 线时周/月线一格要跳 17%~58%（如 81,840→96,033 差一万五），价位分布太稀、色块没参照——
-  // 改为每格约 +9% 反推线数：日线跨度小仍是 9 线，周线约 17 线，月线封顶 25 线（用户 2026-11-13 定）
-  const NL = Math.max(9, Math.min(25, Math.round((scale.lb - scale.la) / Math.log10(1.09)) + 1));
+  const nTick = Math.round((scale.hiP - scale.loP) / scale.step);
   ctx.beginPath();
-  for (let k = 0; k < NL; k++) {
-    const y = Math.round(S.mainH * k / (NL - 1)) + 0.5;
+  for (let k = 0; k <= nTick; k++) {
+    const y = Math.round(scale.y(scale.loP + k * scale.step)) + 0.5;
     ctx.moveTo(0, y); ctx.lineTo(plotW, y);
   }
   ctx.stroke();
   ctx.font = `400 13px ${FONT}`; ctx.fillStyle = COL.ink; ctx.textBaseline = 'middle'; ctx.textAlign = 'left';
-  for (let k = 0; k < NL; k++) {
-    const frac = k / (NL - 1);
-    const p = Math.pow(10, scale.lb - frac * (scale.lb - scale.la));
-    const ly = Math.min(Math.max(S.mainH * frac, 8), S.mainH - 8); // 首/末标签钳进画布，防顶缘裁切、与量轴标签留距
-    ctx.fillText(fmtPrice(p), plotW + AXIS_GAP, ly);
+  for (let k = 0; k <= nTick; k++) {
+    const p = scale.loP + k * scale.step;
+    const ly = Math.min(Math.max(scale.y(p), 8), S.mainH - 8); // 首/末标签钳进画布，防顶缘裁切、与量轴标签留距
+    ctx.fillText(fmtAxis(p, scale.step), plotW + AXIS_GAP, ly);
   }
   // 时间竖线（与时间轴刻度对齐，贯穿三窗格）
   const tickBars = [1, 2, 5, 10, 20, 50, 100, 200, 500, 1000, 2000].find((n) => n * bw >= 110) || 2000;
