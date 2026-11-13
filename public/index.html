@@ -444,12 +444,13 @@ function computeScale() {
   }
   // 留白在对数空间里加：线性留白在宽幅序列（月线 850→126,000）上会把 mn 垫成负数，
   // log10 被钳到 1e-9 后轴面爆炸（2026-11-12 周/月线事故的根）
+  const cMin = mn, cMax = mx; // 可见 K 线的真实价格范围（加留白之前）：图上清算带只画这个范围内的（见绘制处）
   const la0 = Math.log10(Math.max(mn, 1e-9)), lb0 = Math.log10(mx);
   const lpad = (lb0 - la0) * 0.04 || 0.02;
   const a = la0 - lpad, b = lb0 + lpad;
   mn = Math.pow(10, a); mx = Math.pow(10, b);
   scale = { y: (p) => (b - Math.log10(Math.max(p, 1e-9))) / (b - a) * S.mainH,
-            inv: (y) => Math.pow(10, b - y / S.mainH * (b - a)), mn, mx, la: a, lb: b };
+            inv: (y) => Math.pow(10, b - y / S.mainH * (b - a)), mn, mx, la: a, lb: b, cMin, cMax };
 }
 function displayedClusters() {
   if (!S.snap || S.mode === 'off') return [];
@@ -530,6 +531,9 @@ function draw() {
   };
   const layout = [];
   for (const c of clusters) {
+    // 超出可见价格史的簇图上不画（用户 2026-11-13 照 AiCoin 图定：轴顶到历史最高 126,110 附近即可，
+    // 155k 那种远簇现在没用、只留列表/阶梯；后期价格真涨到那一带，K 线范围扩过去它自然入图）
+    if (c.highPx < scale.cMin || c.lowPx > scale.cMax) continue;
     const yTop = scale.y(c.highPx), yBot = scale.y(c.lowPx);
     if (yBot < 0) { ctx.fillStyle = bandFill(c); ctx.fillRect(0, 0, plotW, 3); continue; }          // 整簇在可见区上方 → 顶部边缘标记
     if (yTop > S.mainH) { ctx.fillStyle = bandFill(c); ctx.fillRect(0, S.mainH - 3, plotW, 3); continue; } // 整簇在下方 → 底部边缘标记
@@ -743,7 +747,7 @@ canvas.addEventListener('pointermove', (e) => {
     }
     if (!best) {
       const price = scale.inv(e.offsetY);
-      best = displayedClusters().find((c) => price >= c.lowPx && price <= c.highPx) || null;
+      best = displayedClusters().find((c) => price >= c.lowPx && price <= c.highPx && c.highPx >= scale.cMin && c.lowPx <= scale.cMax) || null;
     }
     S.hoverCluster = best;
     if (S.hoverCluster) showCard(S.hoverCluster, e.offsetX, e.offsetY);
