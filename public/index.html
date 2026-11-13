@@ -480,9 +480,11 @@ function draw() {
   computeScale();
   const bw = plotW / S.count;
   const lo = Math.max(0, Math.floor(startX())), hi = Math.min(S.bars.length, Math.ceil(S.endX));
-  /* --- 网格：对数等距约 9 线（对图1），最底层 --- */
+  /* --- 网格：对数等距，密度随纵轴跨度自适应（最底层） --- */
   ctx.strokeStyle = COL.grid; ctx.lineWidth = 1;
-  const NL = 9;
+  // 固定 9 线时周/月线一格要跳 17%~58%（如 81,840→96,033 差一万五），价位分布太稀、色块没参照——
+  // 改为每格约 +9% 反推线数：日线跨度小仍是 9 线，周线约 17 线，月线封顶 25 线（用户 2026-11-13 定）
+  const NL = Math.max(9, Math.min(25, Math.round((scale.lb - scale.la) / Math.log10(1.09)) + 1));
   ctx.beginPath();
   for (let k = 0; k < NL; k++) {
     const y = Math.round(S.mainH * k / (NL - 1)) + 0.5;
