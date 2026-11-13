@@ -357,6 +357,11 @@ export function createPipeline(deps) {
    * 任意阶段边界上，若距上次发布 ≥55 分钟且已有累积仓位，先补发一版快照（不清空累积，覆盖度随轮次生长）。
    */
   async function step(budgetLimit = STAGE_BUDGET) {
+    // 互斥锁：cron 与手动 /api/step 并发推进同一状态机时，旧状态副本会互相覆盖游标与累积
+    // （2026-11-13 实测 Lighter 游标 160→80 回退、统计翻倍）。锁 100 秒自动过期，持锁者崩溃锁不死管线
+    const lockAt = (await kv.get('job:lock')) || 0;
+    if (now() - lockAt < 100000) return { stage: 'locked', round: 0, subrequests: 0, actions: [] };
+    await kv.put('job:lock', now());
     budget = { used: 0, limit: budgetLimit };
     const state = await loadState();
     const report = { stage: state.stage, round: state.round, subrequests: 0, actions: [] };
@@ -372,8 +377,11 @@ export function createPipeline(deps) {
         state.markets = markets; state.marks = marks;
         const wl = (await kv.get('lighter:watchlist')) || {};
         if (!state.ltCooldownUntil || now() >= state.ltCooldownUntil) {
-          try {
-            for (const coin of COINS) {
+          // 逐市场隔离 + 逐个落盘：旧写法一个市场抛错就整轮名单不保存，名单长期冻在 205 个
+          // （原版同期已攒到 1,465 个）；只有全部市场都失败才进 30 分钟冷却
+          let failures = 0;
+          for (const coin of COINS) {
+            try {
               const trades = await fetchLighterTrades(LIGHTER_MARKETS[coin]);
               for (const t of trades) {
                 for (const id of [t.ask_account_id, t.bid_account_id]) {
@@ -381,13 +389,13 @@ export function createPipeline(deps) {
                   if (isFinite(n) && n > 0 && n < SENTINEL_ACCOUNT) wl[String(Math.trunc(n))] = now();
                 }
               }
-            }
-            await kv.put('lighter:watchlist', wl);
-          } catch (e) {
-            // Lighter 限流/故障不得堵死整条管线：名单沿用存量，冷却 30 分钟后再试，本阶段照常推进
-            state.ltCooldownUntil = now() + 30 * 60 * 1000;
-            report.actions.push(`harvest:lighter-deferred:${String(e && e.message || e).slice(0, 80)}`);
+              await kv.put('lighter:watchlist', wl);
+            } catch (e) { failures++; }
           }
+          if (failures === COINS.length) {
+            state.ltCooldownUntil = now() + 30 * 60 * 1000;
+            report.actions.push('harvest:lighter-deferred:all-failed');
+          } else if (failures) report.actions.push(`harvest:lighter-partial-fail:${failures}`);
         } else {
           report.actions.push('harvest:lighter-cooldown');
         }
@@ -467,6 +475,7 @@ export function createPipeline(deps) {
     report.subrequests = budget.used;
     state.updatedAt = new Date(now()).toISOString();
     await kv.put('job:state', state);
+    await kv.put('job:lock', 0);
     return report;
   }
 

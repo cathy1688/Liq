@@ -355,7 +355,7 @@ const blockAlpha = (amt, maxAmt) => Math.min(0.54, 0.30 + 0.24 * Math.sqrt(maxAm
 function renderLadder() {
   const el = $('ladder');
   el.querySelectorAll('.bar,.tick').forEach((n) => n.remove());
-  const H = S.mainH + S.volH + S.macdH + S.timeH + 8;
+  const H = S.mainH + S.volH + S.macdH + S.timeH + DIV * 2 + GAP1;
   el.style.height = H + 'px';
   if (!S.snap || !S.snap.markPx) return;
   const mark = S.snap.markPx, HEAD = 30;
@@ -415,13 +415,14 @@ function updateReadout(i) {
 /* ================= 图表几何与绘制 ================= */
 let W = 0, H = 0, plotW = 0;
 const DIV = 4;
+const GAP1 = 10; // 主图与成交量之间的额外分隔（用户 2026-11-13：轴底标签与下方交易量贴太近，拉开一点）
 const paneY = () => ({
-  main: 0, vol: S.mainH + DIV, macd: S.mainH + DIV + S.volH + DIV,
-  time: S.mainH + DIV + S.volH + DIV + S.macdH,
+  main: 0, vol: S.mainH + DIV + GAP1, macd: S.mainH + DIV + GAP1 + S.volH + DIV,
+  time: S.mainH + DIV + GAP1 + S.volH + DIV + S.macdH,
 });
 function resize() {
   const wrap = $('chartWrap');
-  W = wrap.clientWidth; H = S.mainH + S.volH + S.macdH + S.timeH + DIV * 2;
+  W = wrap.clientWidth; H = S.mainH + S.volH + S.macdH + S.timeH + DIV * 2 + GAP1;
   plotW = Math.max(200, W - AXIS_W);
   const dpr = window.devicePixelRatio || 1;
   canvas.width = Math.round(W * dpr); canvas.height = Math.round(H * dpr);
