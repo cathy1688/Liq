@@ -354,10 +354,11 @@ function renderLists() {
   mk('short', 'shortHead', 'shortList', COL.short);
 }
 const blockAlpha = (amt, maxAmt) => Math.min(0.54, 0.30 + 0.24 * Math.sqrt(maxAmt > 0 ? amt / maxAmt : 0));
-/* 全景（2026-11-13 用户判旧版「没有任何意义」后重做）：与主图同轴同窗的行密度分布——
-   纵轴与主图共用同一 scale 与窗口（draw 末尾调用、跟随拖/缩），固定 6px 一行，
-   每行金额按簇与该行像素重叠比例求和、条长 ∝ √金额；行是把轴切开分的，任何周期都不会堆叠；
-   窗口外的金额收成主图下方空区的文字行，不画假带；两侧峰值行标注金额与该行中心价。 */
+/* 全景 v3（2026-11-13：v2 行密度被用户判「好丑」——6px 细行＋白缝读成条形码，废）：
+   逐簇粗条——每簇一条 15px 圆角实块，条长 ∝ √金额、深浅随金额，金额+距现价标在条外右侧（侧色）；
+   条锚在簇真实价位（与主图同一 scale/窗口、draw 末尾重绘跟随拖缩），相邻重叠时只在全景内
+   上下摊开（上限 ±56px），被挪开的条在真实价位处留一条细指位线，不假装价位；
+   整簇在图外的不画条，金额收成主图下方空区的汇总文字行。 */
 function renderLadder() {
   const el = $('ladder');
   el.style.height = H + 'px';
@@ -373,75 +374,78 @@ function renderLadder() {
   g.setTransform(dpr, 0, 0, dpr, 0, 0);
   g.clearRect(0, 0, cw, ch);
   const rangeEl = $('ladderRange');
-  if (!S.snap || !S.snap.markPx || !scale) { if (rangeEl) rangeEl.textContent = ''; return; }
+  if (!S.snap || !scale) { if (rangeEl) rangeEl.textContent = ''; return; }
   if (rangeEl) rangeEl.textContent = '同主图窗口';
-  const mark = S.snap.markPx;
   const clusters = displayedClusters();
-  const yHi = Math.max(0, scale.y(scale.cMax * 1.05)), yLo = Math.min(S.mainH, scale.y(scale.cMin / 1.05));
-  const ROW = 6, BARH = 5, X0 = 6, MAXW = 120;
-  const nRows = Math.max(1, Math.ceil(S.mainH / ROW));
-  const rowsL = new Float64Array(nRows), rowsS = new Float64Array(nRows);
+  const extLo = scale.cMin / 1.05, extHi = scale.cMax * 1.05;
+  const yHi = Math.max(0, scale.y(extHi)), yLo = Math.min(mainH, scale.y(extLo));
+  const mark = S.snap.markPx;
+  const markY = scale.y(mark);
   let offTL = 0, offTS = 0, offBL = 0, offBS = 0;
+  const items = [];
   for (const c of clusters) {
-    const yT = scale.y(c.highPx), yB = scale.y(c.lowPx), span = Math.max(1e-6, yB - yT);
-    // 图外比例必须钳到 [0,1]：整簇在图外时 (yHi-yT) 会大于簇自身像素高，不钳会把远处簇重复放大数倍
-    if (yT < yHi) { const f = Math.min(1, (yHi - yT) / span); if (c.side === 'long') offTL += c.totalUsd * f; else offTS += c.totalUsd * f; }
-    if (yB > yLo) { const f = Math.min(1, (yB - yLo) / span); if (c.side === 'long') offBL += c.totalUsd * f; else offBS += c.totalUsd * f; }
-    const vT = Math.max(yT, yHi), vB = Math.min(yB, yLo);
-    if (vB <= vT) continue;
-    const r0 = Math.max(0, Math.floor(vT / ROW)), r1 = Math.min(nRows - 1, Math.floor((vB - 1e-9) / ROW));
-    for (let r = r0; r <= r1; r++) {
-      const ov = Math.min(vB, (r + 1) * ROW) - Math.max(vT, r * ROW);
-      if (ov <= 0) continue;
-      if (c.side === 'long') rowsL[r] += c.totalUsd * ov / span; else rowsS[r] += c.totalUsd * ov / span;
+    if (c.highPx < extLo) { if (c.side === 'long') offBL += c.totalUsd; else offBS += c.totalUsd; continue; }
+    if (c.lowPx > extHi) { if (c.side === 'long') offTL += c.totalUsd; else offTS += c.totalUsd; continue; }
+    items.push({ c, mid: scale.y(mark * (1 + c.distPct / 100)) });
+  }
+  g.font = '600 11px Inter, system-ui, sans-serif'; g.textAlign = 'left'; g.textBaseline = 'alphabetic';
+  if (!items.length) {
+    g.font = '11px Inter, system-ui, sans-serif'; g.fillStyle = '#8A9BA3';
+    g.fillText(clusters.length ? '窗口内暂无清算簇' : '清算带已关闭', 8, 18);
+    g.font = '600 11px Inter, system-ui, sans-serif';
+  } else {
+    const maxAmt = Math.max(1, ...items.map((i) => i.c.totalUsd));
+    // 摊开：以离现价最近的条为锚，上下依次排开（间距 3px），每条离真实价位最多 ±56px
+    const BARH = 15, GAP = 3, CAP = 56;
+    items.sort((a, b) => a.mid - b.mid);
+    let ai = 0, best = Infinity;
+    items.forEach((it, i) => { const d = Math.abs(it.mid - markY); if (d < best) { best = d; ai = i; } });
+    for (const it of items) it.top = it.mid - BARH / 2;
+    for (let i = ai + 1; i < items.length; i++) { const p = items[i - 1], it = items[i]; if (it.top < p.top + BARH + GAP) it.top = p.top + BARH + GAP; }
+    for (let i = ai - 1; i >= 0; i--) { const n = items[i + 1], it = items[i]; if (it.top + BARH > n.top - GAP) it.top = n.top - GAP - BARH; }
+    for (let i = ai + 1; i < items.length; i++) { const it = items[i]; const mx = it.mid + CAP - BARH / 2; if (it.top > mx) it.top = mx; }
+    for (let i = ai - 1; i >= 0; i--) { const it = items[i]; const mn = it.mid - CAP - BARH / 2; if (it.top < mn) it.top = mn; }
+    let shift = 0;
+    const lastBot = items[items.length - 1].top + BARH, firstTop = items[0].top;
+    if (lastBot > yLo) shift = yLo - lastBot;
+    if (firstTop + shift < yHi) shift = yHi - firstTop;
+    if (shift) for (const it of items) it.top += shift;
+    const X0 = 8, MAXW = 118;
+    for (const it of items) {
+      const c = it.c, col = c.side === 'long' ? COL.long : COL.short;
+      const ctr = it.top + BARH / 2;
+      // 指位线：条被摊开挪位时，在真实价位处留细线
+      if (Math.abs(ctr - it.mid) > 2) {
+        g.strokeStyle = 'rgba(31,45,56,.38)'; g.lineWidth = 1; g.setLineDash([]);
+        g.beginPath(); g.moveTo(3.5, it.mid); g.lineTo(3.5, ctr); g.moveTo(0.5, it.mid); g.lineTo(7.5, it.mid); g.stroke();
+      }
+      const label = `${fmtM(c.totalUsd)} · ${fmtPct(c.distPct)}`;
+      const lw = g.measureText(label).width;
+      const w = Math.max(12, Math.min(MAXW * Math.sqrt(c.totalUsd / maxAmt), cw - X0 - lw - 14));
+      const a = 0.55 + 0.30 * Math.sqrt(c.totalUsd / maxAmt);
+      g.fillStyle = rgba(col, a);
+      g.beginPath(); g.roundRect(X0, it.top, w, BARH, 4); g.fill();
+      g.fillStyle = col;
+      g.fillText(label, X0 + w + 6, ctr + 4);
     }
   }
-  let maxRow = 1, peakL = -1, peakS = -1;
-  for (let r = 0; r < nRows; r++) {
-    if (rowsL[r] > 0 && (peakL < 0 || rowsL[r] > rowsL[peakL])) peakL = r;
-    if (rowsS[r] > 0 && (peakS < 0 || rowsS[r] > rowsS[peakS])) peakS = r;
-    maxRow = Math.max(maxRow, rowsL[r], rowsS[r]);
+  // 现价虚线（与主图同一 y）
+  if (markY >= 0 && markY <= mainH) {
+    g.strokeStyle = 'rgba(31,45,56,.45)'; g.lineWidth = 1; g.setLineDash([4, 3]);
+    g.beginPath(); g.moveTo(0, markY); g.lineTo(cw, markY); g.stroke(); g.setLineDash([]);
+    g.font = '10px Inter, system-ui, sans-serif'; g.fillStyle = '#5B6B74'; g.textAlign = 'right';
+    g.fillText('现价', cw - 4, markY - 4);
+    g.textAlign = 'left';
   }
-  const len = (amt) => MAXW * Math.sqrt(amt / maxRow);
-  for (let r = 0; r < nRows; r++) {
-    const y = r * ROW + (ROW - BARH) / 2, L = rowsL[r], Sh = rowsS[r];
-    if (L > 0 && Sh > 0) {
-      g.fillStyle = rgba(COL.long, blockAlpha(L, maxRow)); g.fillRect(X0, y, len(L), 2.4);
-      g.fillStyle = rgba(COL.short, blockAlpha(Sh, maxRow)); g.fillRect(X0, y + 2.6, len(Sh), 2.4);
-    } else if (L > 0) { g.fillStyle = rgba(COL.long, blockAlpha(L, maxRow)); g.fillRect(X0, y, len(L), BARH); }
-    else if (Sh > 0) { g.fillStyle = rgba(COL.short, blockAlpha(Sh, maxRow)); g.fillRect(X0, y, len(Sh), BARH); }
-  }
-  // 现价虚线（与主图现价同一 y）
-  const my = scale.y(mark);
-  if (my >= 0 && my <= S.mainH) {
-    g.strokeStyle = 'rgba(31,45,56,.45)'; g.setLineDash([4, 3]);
-    g.beginPath(); g.moveTo(0, Math.round(my) + 0.5); g.lineTo(cw, Math.round(my) + 0.5); g.stroke(); g.setLineDash([]);
-    g.fillStyle = '#5B6B74'; g.font = `10px ${FONT}`; g.textAlign = 'right';
-    g.fillText('现价', cw - 5, my - 4); g.textAlign = 'left';
-  }
-  // 两侧峰值行标注：金额 · 该行中心价
-  const peakLabel = (r, amt, color) => {
-    if (r < 0) return;
-    const txt = `${fmtM(amt)} · ${fmtPrice(scale.inv(r * ROW + ROW / 2))}`;
-    g.font = `600 11px ${FONT}`;
-    const w = g.measureText(txt).width;
-    let x = X0 + len(amt) + 5;
-    if (x + w > cw - 2) x = Math.max(X0 + 2, cw - 2 - w);
-    g.fillStyle = color; g.fillText(txt, x, r * ROW + ROW / 2 + 4);
-  };
-  if (peakL >= 0) peakLabel(peakL, rowsL[peakL], COL.long);
-  if (peakS >= 0) peakLabel(peakS, rowsS[peakS], COL.short);
-  // 主图下方空区：图外汇总 + 口径注脚
-  let ty = S.mainH + 24;
-  g.font = `11px ${FONT}`;
-  const offLine = (txt, color) => { g.fillStyle = color; g.fillText(txt, X0 + 2, ty); ty += 18; };
-  if (offTS >= 100000) offLine(`上方图外 · 空 ${fmtM(offTS)}`, COL.short);
-  if (offTL >= 100000) offLine(`上方图外 · 多 ${fmtM(offTL)}`, COL.long);
-  if (offBL >= 100000) offLine(`下方图外 · 多 ${fmtM(offBL)}`, COL.long);
-  if (offBS >= 100000) offLine(`下方图外 · 空 ${fmtM(offBS)}`, COL.short);
-  g.fillStyle = '#8A9BA3'; g.font = `10px ${FONT}`;
-  g.fillText('每行 = 该价位片清算额 · 长度 ∝ √金额', X0 + 2, ty + 2);
-  if (!clusters.length) { g.font = `11px ${FONT}`; g.fillStyle = '#8A9BA3'; g.fillText('清算带已关闭', X0 + 2, 20); }
+  // 图外汇总 + 注脚（主图下方空区，面板总高 = 图表总高 H）
+  let oy = mainH + 26;
+  g.font = '600 11px Inter, system-ui, sans-serif';
+  if (offTS >= 1e5) { g.fillStyle = COL.short; g.fillText(`上方图外 · 空 ${fmtM(offTS)}`, 8, oy); oy += 16; }
+  if (offTL >= 1e5) { g.fillStyle = COL.long; g.fillText(`上方图外 · 多 ${fmtM(offTL)}`, 8, oy); oy += 16; }
+  if (offBS >= 1e5) { g.fillStyle = COL.short; g.fillText(`下方图外 · 空 ${fmtM(offBS)}`, 8, oy); oy += 16; }
+  if (offBL >= 1e5) { g.fillStyle = COL.long; g.fillText(`下方图外 · 多 ${fmtM(offBL)}`, 8, oy); oy += 16; }
+  g.font = '10px Inter, system-ui, sans-serif'; g.fillStyle = '#8A9BA3';
+  g.fillText('细线 = 簇的真实价位 · 条长 ∝ √金额', 8, oy + 4);
 }
 
 /* ================= 读数行（两行，对图1） ================= */
