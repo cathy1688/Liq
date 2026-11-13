@@ -515,19 +515,47 @@ function draw() {
     ctx.fillText(label, Math.min(Math.max(xFor(i), 30), plotW - 30), py.time + S.timeH / 2);
   }
   ctx.textAlign = 'left';
-  /* --- 清算色块（平填、真实价位 ∩ 可见区） --- */
+  /* --- 清算色块（平填、真实价位 ∩ 可见区；过细时最小高度+避让排布，只动画法不动数据） --- */
   const clusters = displayedClusters();
   const maxAmt = Math.max(1, ...clusters.map((c) => c.totalUsd));
+  // 布局先行：周/月线一格(1%)只有 2~3px，照真实高度画就是一排细线——看着连成片、悬停还点不中。
+  // 高度不足 7px 的以真实中心撑到 7px；再自上而下避让，相邻块之间恒留 ≥1px 白缝（与右侧阶梯同一思路）。
+  const MINBH = 7;
+  const layout = [];
   for (const c of clusters) {
+    const yTop0 = scale.y(c.highPx), yBot0 = scale.y(c.lowPx);
+    if (yBot0 < 0) { layout.push({ c, out: 'top' }); continue; }
+    if (yTop0 > S.mainH) { layout.push({ c, out: 'bottom' }); continue; }
+    let yT = Math.max(0, yTop0), yB = Math.min(S.mainH, yBot0);
+    if (yB - yT < MINBH) {
+      const mid = (yT + yB) / 2;
+      yT = mid - MINBH / 2; yB = mid + MINBH / 2;
+      if (yT < 0) { yB -= yT; yT = 0; }
+      if (yB > S.mainH) { yT = Math.max(0, yT - (yB - S.mainH)); yB = S.mainH; }
+    }
+    layout.push({ c, yT, yB });
+  }
+  let prevB = -1;
+  for (const L of layout.filter((x) => !x.out).sort((a, b) => a.yT - b.yT)) {
+    if (L.yT < prevB + 1) { const h = L.yB - L.yT; L.yT = prevB + 1; L.yB = L.yT + h; }
+    if (L.yB > S.mainH) L.yB = S.mainH;
+    prevB = Math.max(prevB, L.yB);
+  }
+  S.bandLayout = layout;
+  for (const L of layout) {
+    const c = L.c;
     const hov = S.hoverCluster === c;
     const color = hov && c.side === 'short' ? COL.shortHover : c.side === 'long' ? COL.long : COL.short;
     const alpha = hov ? (c.side === 'short' ? Math.min(0.64, blockAlpha(c.totalUsd, maxAmt) + 0.10) : 0.6)
                       : blockAlpha(c.totalUsd, maxAmt);
     ctx.fillStyle = rgba(color, alpha);
-    const yTop = scale.y(c.highPx), yBot = scale.y(c.lowPx);
-    if (yBot < 0) ctx.fillRect(0, 0, plotW, 3);                    // 整簇在可见区上方 → 顶部边缘标记
-    else if (yTop > S.mainH) ctx.fillRect(0, S.mainH - 3, plotW, 3); // 整簇在下方 → 底部边缘标记
-    else ctx.fillRect(0, Math.max(0, yTop), plotW, Math.min(S.mainH, yBot) - Math.max(0, yTop));
+    if (L.out === 'top') ctx.fillRect(0, 0, plotW, 3);                    // 整簇在可见区上方 → 顶部边缘标记
+    else if (L.out === 'bottom') ctx.fillRect(0, S.mainH - 3, plotW, 3); // 整簇在下方 → 底部边缘标记
+    else {
+      const h = L.yB - L.yT;
+      const inset = h > 10 ? 1 : 0; // 高块上下各让 1px，相邻块恒有白缝、不连成一片
+      ctx.fillRect(0, L.yT + inset, plotW, Math.max(1, h - inset * 2));
+    }
   }
   /* --- K 线 --- */
   for (let i = lo; i < hi; i++) {
@@ -709,9 +737,20 @@ canvas.addEventListener('pointermove', (e) => {
   updateReadout(S.hoverI);
   S.hoverCluster = null;
   if (e.offsetY < S.mainH && scale && S.snap) {
-    const price = scale.inv(e.offsetY);
-    const clusters = displayedClusters();
-    S.hoverCluster = clusters.find((c) => price >= c.lowPx && price <= c.highPx) || null;
+    // 按绘制布局命中（色块已按最小高度/避让排布）：命中带上下各放宽 5px，多候选取绘制中心最近——
+    // 旧版按价格区间命中，周/月线一格只有 2~3px，根本点不中（用户原话「点击很麻烦，太细了」）
+    let best = null, bestD = 1e9;
+    for (const L of S.bandLayout || []) {
+      let d;
+      if (L.out === 'top') { if (e.offsetY > 12) continue; d = e.offsetY; }
+      else if (L.out === 'bottom') { if (e.offsetY < S.mainH - 12) continue; d = S.mainH - e.offsetY; }
+      else {
+        if (e.offsetY < L.yT - 5 || e.offsetY > L.yB + 5) continue;
+        d = Math.abs((L.yT + L.yB) / 2 - e.offsetY);
+      }
+      if (d < bestD) { bestD = d; best = L.c; }
+    }
+    S.hoverCluster = best;
     if (S.hoverCluster) showCard(S.hoverCluster, e.offsetX, e.offsetY);
     else hideCard();
   } else hideCard();
