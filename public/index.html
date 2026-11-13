@@ -384,8 +384,9 @@ function renderLadder() {
   let offTL = 0, offTS = 0, offBL = 0, offBS = 0;
   for (const c of clusters) {
     const yT = scale.y(c.highPx), yB = scale.y(c.lowPx), span = Math.max(1e-6, yB - yT);
-    if (yT < yHi) { if (c.side === 'long') offTL += c.totalUsd * (yHi - yT) / span; else offTS += c.totalUsd * (yHi - yT) / span; }
-    if (yB > yLo) { if (c.side === 'long') offBL += c.totalUsd * (yB - yLo) / span; else offBS += c.totalUsd * (yB - yLo) / span; }
+    // 图外比例必须钳到 [0,1]：整簇在图外时 (yHi-yT) 会大于簇自身像素高，不钳会把远处簇重复放大数倍
+    if (yT < yHi) { const f = Math.min(1, (yHi - yT) / span); if (c.side === 'long') offTL += c.totalUsd * f; else offTS += c.totalUsd * f; }
+    if (yB > yLo) { const f = Math.min(1, (yB - yLo) / span); if (c.side === 'long') offBL += c.totalUsd * f; else offBS += c.totalUsd * f; }
     const vT = Math.max(yT, yHi), vB = Math.min(yB, yLo);
     if (vB <= vT) continue;
     const r0 = Math.max(0, Math.floor(vT / ROW)), r1 = Math.min(nRows - 1, Math.floor((vB - 1e-9) / ROW));
