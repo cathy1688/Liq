@@ -447,11 +447,14 @@ function computeScale() {
     const c = S.liveMark || (S.snap && S.snap.markPx) || (S.bars.length ? S.bars[S.bars.length - 1].c : 100);
     mn = c * 0.92; mx = c * 1.08;
   }
-  // 清算簇纳入定轴（2026-11-13 用户先问「14–15 万都有清算，为什么没有表示出来」，再纠正「点全部它也不显示」）：
-  // 「全部」就按全部办——已显示的簇全部并入轴范围，哪根都不许被网格切掉；代价是日线在全部模式下
-  // 轴面会拉到 0–150,000、K 线压在中段，这正是全景图的取舍。「近端 ±30%」模式下簇已被过滤，轴仍贴着价格。
+  // 清算簇纳入定轴（2026-11-13 定版；「全部簇全并入轴」的版本把日线 K 线压成中段一条，用户当场否决、已回滚）：
+  // 与 K 线范围相交、或超出不超过 20% 的已显示簇并入范围——月线贴边的大簇（148,494–149,205，$44.6M）能进网格，
+  // 日线轴面不被远簇拉爆；再远的簇仍在阶梯/列表里呈现
   if (S.snap && S.mode !== 'off' && isFinite(mn)) {
-    for (const c of displayedClusters()) { mn = Math.min(mn, c.lowPx); mx = Math.max(mx, c.highPx); }
+    const extLo = mn * 0.8, extHi = mx * 1.2;
+    for (const c of displayedClusters()) {
+      if (c.highPx >= extLo && c.lowPx <= extHi) { mn = Math.min(mn, c.lowPx); mx = Math.max(mx, c.highPx); }
+    }
   }
   // AiCoin 式普通坐标（用户 2026-11-13 定，取代对数轴）：线性标尺 + 整数步长（1/2/2.5/5×10^n，
   // 按可见跨度÷9 取档），上下界对齐步长整数倍——所有周期同一套规则，刻度永远是整数字
