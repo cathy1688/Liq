@@ -257,6 +257,17 @@ function createPipeline(deps) {
         markets: state.markets || [],
         publishReason: reason,
       };
+      // 半程保底发布不许冲掉更完整的已发布版（2026-11-13 事故：轮次半程 119/300 扫描、
+      // Lighter 未轮询的快照把完整版覆盖，多头总额 $213M 假摔到 $39M）。完整轮次（finalize）无条件发布；
+      // 旧版超过 3 小时则允许半程版接替，防轮次卡死时页面永远不更新
+      if (reason !== 'finalize') {
+        const existing = await kv.get(`snap:${coin}`);
+        if (existing && existing.totals &&
+            snap.totals.positionCount < (existing.totals.positionCount || 0) &&
+            now() - Date.parse(existing.fetchedAt || 0) < 3 * 3600000) {
+          continue;
+        }
+      }
       await kv.put(`snap:${coin}`, snap);
     }
     state.lastPublish = now();
