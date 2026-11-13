@@ -524,7 +524,7 @@ function draw() {
   }
   ctx.textAlign = 'left';
   /* --- 清算色块（平填）：对数轴上周/月线一格仅 2~3px、按真实高度画会细成条纹——绘制前排布一遍：
-     最小高度 8px、目标间距 2px，以离现价最近的带为锚向上下轻推，但每条带位移封顶 14px——
+     高度按金额定（见 layout 处），目标间距 2px，以离现价最近的带为锚向上下轻推，但每条带位移封顶 14px——
      带子必须留在自己的价位上（2026-11-13 无封顶摊开把月线摊成脱离价位的条纹墙、被用户否决）；
      挤在 14px 内实在分不开的同向相邻带，允许贴住（透明度不同、交界仍有色阶）。区外贴边标记维持旧版行为 --- */
   const clusters = displayedClusters();
@@ -536,16 +536,22 @@ function draw() {
                       : blockAlpha(c.totalUsd, maxAmt);
     return rgba(color, alpha);
   };
+  // 入图范围 = 可见价格史上下各放宽 5%（用户 2026-11-13：轴顶到历史最高附近即可、155k 远簇不画；
+  // 但贴着边缘的大簇要能进来——如日线现价窗顶 87.4k 时 88–89k 的 $72M 簇，放宽后日线内容到约 9 万）
+  const extLo = scale.cMin / 1.05, extHi = scale.cMax * 1.05;
+  const drawn = clusters.filter((c) => c.highPx >= extLo && c.lowPx <= extHi);
+  const maxDrawn = Math.max(1, ...drawn.map((c) => c.totalUsd));
   const layout = [];
-  for (const c of clusters) {
-    // 超出可见价格史的簇图上不画（用户 2026-11-13 照 AiCoin 图定：轴顶到历史最高 126,110 附近即可，
-    // 155k 那种远簇现在没用、只留列表/阶梯；后期价格真涨到那一带，K 线范围扩过去它自然入图）
-    if (c.highPx < scale.cMin || c.lowPx > scale.cMax) continue;
+  for (const c of drawn) {
     const yTop = scale.y(c.highPx), yBot = scale.y(c.lowPx);
     if (yBot < 0) { ctx.fillStyle = bandFill(c); ctx.fillRect(0, 0, plotW, 3); continue; }          // 整簇在可见区上方 → 顶部边缘标记
     if (yTop > S.mainH) { ctx.fillStyle = bandFill(c); ctx.fillRect(0, S.mainH - 3, plotW, 3); continue; } // 整簇在下方 → 底部边缘标记
     const t = Math.max(0, yTop), b = Math.min(S.mainH, yBot);
-    const mid = (t + b) / 2, h = Math.max(8, b - t);
+    const mid = (t + b) / 2;
+    // 高度表金额（用户 2026-11-13 定「金额越大色块越粗、越小越细，不要都一样大」）：
+    // √标尺——入图最大簇 26px、封顶 30px；真实价位高度仍是下限，保底 5px
+    const amtH = Math.min(30, 26 * Math.sqrt(c.totalUsd / maxDrawn));
+    const h = Math.max(5, b - t, amtH);
     layout.push({ c, top: mid - h / 2, bot: mid + h / 2, mid, h });
   }
   layout.sort((a, b) => a.mid - b.mid);
@@ -564,8 +570,8 @@ function draw() {
     if (over > 0) layout.forEach((r) => { r.top -= over; r.bot -= over; });
     if (layout[0].top < 0) { const d = -layout[0].top; layout.forEach((r) => { r.top += d; r.bot += d; }); }
   }
-  // 绘制范围钳在价格史内：排布撑高/轻推不许把带子顶出最高价线、或沉到最低价线之外（呼吸区保持空白）
-  const yHi = scale.y(scale.cMax), yLo = scale.y(scale.cMin);
+  // 绘制范围钳在价格史 ±5% 内：排布撑高/轻推不许把带子顶出这条线（呼吸区保持空白）
+  const yHi = Math.max(0, scale.y(scale.cMax * 1.05)), yLo = Math.min(S.mainH, scale.y(scale.cMin / 1.05));
   for (const r of layout) { r.top = Math.max(r.top, yHi); r.bot = Math.min(r.bot, yLo); }
   S.bandLayout = layout.filter((r) => r.bot > r.top);
   for (const r of S.bandLayout) { ctx.fillStyle = bandFill(r.c); ctx.fillRect(0, r.top, plotW, Math.max(1, r.bot - r.top)); }
@@ -757,7 +763,7 @@ canvas.addEventListener('pointermove', (e) => {
     }
     if (!best) {
       const price = scale.inv(e.offsetY);
-      best = displayedClusters().find((c) => price >= c.lowPx && price <= c.highPx && c.highPx >= scale.cMin && c.lowPx <= scale.cMax) || null;
+      best = displayedClusters().find((c) => price >= c.lowPx && price <= c.highPx && c.highPx >= scale.cMin / 1.05 && c.lowPx <= scale.cMax * 1.05) || null;
     }
     S.hoverCluster = best;
     if (S.hoverCluster) showCard(S.hoverCluster, e.offsetX, e.offsetY);

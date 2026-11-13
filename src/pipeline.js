@@ -122,6 +122,14 @@ export function mergeBars(existing, incoming) {
   return [...map.values()].sort((a, b) => a[0] - b[0]);
 }
 
+// HL 覆盖已有根时只取价格、保留原量：Bitfinex 币种的量是现货口径，HL 永续量大 30–100 倍，
+// 混写一条就会把成交量副图顶爆（2026-11-13 事故：BTC 日线尾 5 根被 HL 量污染）
+export function mergeBarsKeepVol(existing, incoming) {
+  const old = new Map((existing || []).map((b) => [b[0], b]));
+  const merged = mergeBars(existing, incoming);
+  return merged.map((b) => (old.has(b[0]) ? [b[0], b[1], b[2], b[3], b[4], old.get(b[0])[5]] : b));
+}
+
 export function createPipeline(deps) {
   const fetchFn = deps.fetch;
   const kv = deps.kv;
@@ -310,10 +318,37 @@ export function createPipeline(deps) {
       }
       if (meta.done && stored.bars.length) meta.earliest = stored.bars[0][0];
     } else {
-      // 追加/修未收盘根：只取尾段，HL 覆盖同 t
+      // 追加/修未收盘根：只取尾段。Bitfinex 币种的量必须同源（现货口径）——尾段优先 Bitfinex；
+      // 1w 是周四锚、Bitfinex 无此口径，价格仍走 HL，量改由日线按周四桶汇总回填；
+      // 1M 是自然月，Bitfinex '1M' 与回填同源，直接走 Bitfinex
       const lastT = stored.bars.length ? stored.bars[stored.bars.length - 1][0] : 0;
-      const bars = await hlCandles(coin, tf, Math.max(0, lastT - 3 * tfMs), now());
-      stored.bars = mergeBars(stored.bars, bars);
+      const tailStart = Math.max(0, lastT - 3 * tfMs);
+      if (BITFINEX_PAIRS[coin] && tf === '1w') {
+        const bars = await hlCandles(coin, tf, tailStart, now());
+        stored.bars = mergeBarsKeepVol(stored.bars, bars);
+        const daily = (await kv.get(`candles:${coin}:1d`)) || { bars: [] };
+        if (daily.bars.length) {
+          const sum = new Map();
+          for (const d of daily.bars) {
+            const wk = Math.floor(d[0] / TF_MS['1w']) * TF_MS['1w'];
+            sum.set(wk, (sum.get(wk) || 0) + d[5]);
+          }
+          stored.bars = stored.bars.map((b) => (sum.has(b[0]) ? [b[0], b[1], b[2], b[3], b[4], sum.get(b[0])] : b));
+        }
+      } else if (BITFINEX_PAIRS[coin]) {
+        try {
+          const page = await bfxPage(coin, tf, now());
+          const tail = page.filter((r) => r[0] >= tailStart);
+          if (tail.length) stored.bars = mergeBars(stored.bars, tail);
+          else throw new Error('bfx tail empty');
+        } catch (e) {
+          const bars = await hlCandles(coin, tf, tailStart, now());
+          stored.bars = mergeBarsKeepVol(stored.bars, bars); // Bitfinex 不可达时 HL 只补价格、量保留
+        }
+      } else {
+        const bars = await hlCandles(coin, tf, tailStart, now());
+        stored.bars = mergeBars(stored.bars, bars);
+      }
     }
     await kv.put(key, stored);
     return { count: stored.bars.length, earliest: stored.bars.length ? stored.bars[0][0] : null, latest: stored.bars.length ? stored.bars[stored.bars.length - 1][0] : null };
