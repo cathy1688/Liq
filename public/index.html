@@ -58,15 +58,15 @@
   .legend-note i{width:13px; height:10px; border-radius:2px; display:inline-block;}
   .spacer{flex:1;}
   /* ---- 图表 + 阶梯 ---- */
-  .chart-flex{display:flex; margin-top:8px; border:1px solid var(--border); border-radius:10px; overflow:hidden;}
+  .chart-head{display:flex; align-items:flex-end; margin-top:10px;}
+  .chart-head .lh-note{flex:1; min-width:0;}
+  .chart-head .lh-title{width:264px; flex:none; font-size:12px; color:var(--gray); font-weight:600; padding:0 10px 2px; display:flex; justify-content:space-between;}
+  .chart-flex{display:flex; margin-top:4px; border:1px solid var(--border); border-radius:10px; overflow:hidden;}
   .chart-wrap{position:relative; flex:1; min-width:0;}
   canvas{display:block; width:100%; cursor:grab; touch-action:none; outline:none;}
   canvas.dragging{cursor:grabbing;}
   .ladder{width:264px; flex:none; border-left:1px solid var(--border); position:relative; background:#FCFDFE; overflow:hidden;}
-  .ladder h4{font-size:12px; color:var(--gray); font-weight:600; padding:8px 10px 0; display:flex; justify-content:space-between;}
-  .ladder .bar{position:absolute; left:6px; height:18px; border-radius:4px; display:flex; align-items:center;
-    padding:0 7px; font-size:11px; font-weight:600; color:#fff; overflow:hidden; white-space:nowrap;}
-  .ladder .tick{position:absolute; right:5px; font-size:10px; color:var(--axis-gray); white-space:nowrap; transform:translateY(-50%);}
+  #ladderCv{position:absolute; left:0; top:0; display:block;}
   .home-btn{position:absolute; right:108px; bottom:34px; z-index:5; border:1px solid var(--border); background:#fff;
     border-radius:8px; padding:6px 12px; font-size:12px; font-weight:600; cursor:pointer; box-shadow:0 2px 8px rgba(31,45,56,.12); font-family:inherit;}
   .hover-card{position:absolute; z-index:6; width:204px; padding:7px 10px; background:rgba(255,255,255,.97);
@@ -76,7 +76,7 @@
   .hover-card .lab{color:#8A9BA3; font-size:12px; font-weight:400;}
   /* ---- 下方两列簇表 ---- */
   .lists{display:grid; grid-template-columns:1fr 1fr; gap:16px; margin-top:16px;}
-  @media (max-width:760px){ .lists{grid-template-columns:1fr;} .ladder{display:none;} }
+  @media (max-width:760px){ .lists{grid-template-columns:1fr;} .ladder{display:none;} .chart-head .lh-title{display:none;} }
   .list-box{border:1px solid var(--border); border-radius:10px; overflow:hidden;}
   .list-box h3{font-size:14px; padding:10px 14px; border-bottom:1px solid var(--border);}
   .list-box table{width:100%; border-collapse:collapse; font-size:13px;}
@@ -123,7 +123,10 @@
     </div>
     <button class="zoom-btn" id="zoomIn">+</button>
     <button class="zoom-btn" id="zoomOut">−</button>
-    <div class="legend-note"><i style="background:var(--long);opacity:.4"></i><i style="background:var(--short);opacity:.4"></i>颜色深浅 = 清算金额</div>
+  </div>
+  <div class="chart-head">
+    <div class="lh-note"><div class="legend-note"><i style="background:var(--long);opacity:.4"></i><i style="background:var(--short);opacity:.4"></i>颜色深浅 = 清算金额</div></div>
+    <div class="lh-title"><span>清算全景</span><span id="ladderRange"></span></div>
   </div>
   <div class="chart-flex">
     <div class="chart-wrap" id="chartWrap">
@@ -131,7 +134,7 @@
       <button class="home-btn" id="homeBtn" style="display:none">回到最新</button>
       <div class="hover-card" id="hoverCard"></div>
     </div>
-    <div class="ladder" id="ladder"><h4><span>清算全景</span><span>-50% / +60%</span></h4></div>
+    <div class="ladder" id="ladder"><canvas id="ladderCv"></canvas></div>
   </div>
   <div class="lists">
     <div class="list-box"><h3 id="longHead">多头清算簇</h3><div id="longList"></div></div>
@@ -351,46 +354,93 @@ function renderLists() {
   mk('short', 'shortHead', 'shortList', COL.short);
 }
 const blockAlpha = (amt, maxAmt) => Math.min(0.54, 0.30 + 0.24 * Math.sqrt(maxAmt > 0 ? amt / maxAmt : 0));
-/* 全景阶梯：统一细条（18px）按距现价定位、近簇自动错行不重叠；右侧 % 刻度带价（对图1） */
+/* 全景（2026-11-13 用户判旧版「没有任何意义」后重做）：与主图同轴同窗的行密度分布——
+   纵轴与主图共用同一 scale 与窗口（draw 末尾调用、跟随拖/缩），固定 6px 一行，
+   每行金额按簇与该行像素重叠比例求和、条长 ∝ √金额；行是把轴切开分的，任何周期都不会堆叠；
+   窗口外的金额收成主图下方空区的文字行，不画假带；两侧峰值行标注金额与该行中心价。 */
 function renderLadder() {
   const el = $('ladder');
-  el.querySelectorAll('.bar,.tick').forEach((n) => n.remove());
-  const H = S.mainH + S.volH + S.macdH + S.timeH + DIV * 2 + GAP1;
   el.style.height = H + 'px';
-  if (!S.snap || !S.snap.markPx) return;
-  const mark = S.snap.markPx, HEAD = 30;
-  const yOf = (pct) => HEAD + (60 - pct) / 110 * (H - HEAD - 8);
-  for (const pct of [60, 40, 20, 0, -20, -40]) {
-    const t = document.createElement('div');
-    t.className = 'tick';
-    t.style.top = yOf(pct) + 'px';
-    t.textContent = `${pct > 0 ? '+' : ''}${pct}% · ${fmtPrice(mark * (1 + pct / 100))}`;
-    el.appendChild(t);
+  const cv = $('ladderCv');
+  if (!cv || !H) return;
+  const dpr = window.devicePixelRatio || 1;
+  const cw = el.clientWidth, ch = H;
+  if (cv.width !== Math.round(cw * dpr) || cv.height !== Math.round(ch * dpr)) {
+    cv.width = Math.round(cw * dpr); cv.height = Math.round(ch * dpr);
+    cv.style.width = cw + 'px'; cv.style.height = ch + 'px';
   }
-  const rows = S.snap.clusters
-    .filter((c) => c.distPct >= -50 && c.distPct <= 60)
-    .sort((a, b) => b.distPct - a.distPct);
-  const maxAmt = Math.max(1, ...rows.map((c) => c.totalUsd));
-  // 条宽：金额 √ 标尺打底，但不得窄于标签文本宽（11px 粗体实测），上限给右侧 % 刻度让位
-  const meas = document.createElement('canvas').getContext('2d');
-  meas.font = `600 11px ${FONT}`;
-  let lastBottom = -Infinity;
-  for (const c of rows) {
-    let top = yOf(c.distPct) - 9;
-    if (top < lastBottom + 2) top = lastBottom + 2;   // 错行防重叠
-    lastBottom = top + 18;
-    const label = `${c.side === 'short' ? '空' : '多'} ${fmtM(c.totalUsd)} · ${fmtPct(c.distPct)}`;
-    const div = document.createElement('div');
-    div.className = 'bar';
-    const base = c.side === 'long' ? '0,177,107' : '246,70,93';
-    const a = 0.55 + 0.30 * Math.sqrt(c.totalUsd / maxAmt);
-    div.style.background = `rgba(${base},${a.toFixed(2)})`;
-    div.style.top = top + 'px';
-    const amtW = 34 + 138 * Math.sqrt(c.totalUsd / maxAmt);
-    div.style.width = `${Math.min(178, Math.max(amtW, meas.measureText(label).width + 16)).toFixed(0)}px`;
-    div.textContent = label;
-    el.appendChild(div);
+  const g = cv.getContext('2d');
+  g.setTransform(dpr, 0, 0, dpr, 0, 0);
+  g.clearRect(0, 0, cw, ch);
+  const rangeEl = $('ladderRange');
+  if (!S.snap || !S.snap.markPx || !scale) { if (rangeEl) rangeEl.textContent = ''; return; }
+  if (rangeEl) rangeEl.textContent = '同主图窗口';
+  const mark = S.snap.markPx;
+  const clusters = displayedClusters();
+  const yHi = Math.max(0, scale.y(scale.cMax * 1.05)), yLo = Math.min(S.mainH, scale.y(scale.cMin / 1.05));
+  const ROW = 6, BARH = 5, X0 = 6, MAXW = 120;
+  const nRows = Math.max(1, Math.ceil(S.mainH / ROW));
+  const rowsL = new Float64Array(nRows), rowsS = new Float64Array(nRows);
+  let offTL = 0, offTS = 0, offBL = 0, offBS = 0;
+  for (const c of clusters) {
+    const yT = scale.y(c.highPx), yB = scale.y(c.lowPx), span = Math.max(1e-6, yB - yT);
+    if (yT < yHi) { if (c.side === 'long') offTL += c.totalUsd * (yHi - yT) / span; else offTS += c.totalUsd * (yHi - yT) / span; }
+    if (yB > yLo) { if (c.side === 'long') offBL += c.totalUsd * (yB - yLo) / span; else offBS += c.totalUsd * (yB - yLo) / span; }
+    const vT = Math.max(yT, yHi), vB = Math.min(yB, yLo);
+    if (vB <= vT) continue;
+    const r0 = Math.max(0, Math.floor(vT / ROW)), r1 = Math.min(nRows - 1, Math.floor((vB - 1e-9) / ROW));
+    for (let r = r0; r <= r1; r++) {
+      const ov = Math.min(vB, (r + 1) * ROW) - Math.max(vT, r * ROW);
+      if (ov <= 0) continue;
+      if (c.side === 'long') rowsL[r] += c.totalUsd * ov / span; else rowsS[r] += c.totalUsd * ov / span;
+    }
   }
+  let maxRow = 1, peakL = -1, peakS = -1;
+  for (let r = 0; r < nRows; r++) {
+    if (rowsL[r] > 0 && (peakL < 0 || rowsL[r] > rowsL[peakL])) peakL = r;
+    if (rowsS[r] > 0 && (peakS < 0 || rowsS[r] > rowsS[peakS])) peakS = r;
+    maxRow = Math.max(maxRow, rowsL[r], rowsS[r]);
+  }
+  const len = (amt) => MAXW * Math.sqrt(amt / maxRow);
+  for (let r = 0; r < nRows; r++) {
+    const y = r * ROW + (ROW - BARH) / 2, L = rowsL[r], Sh = rowsS[r];
+    if (L > 0 && Sh > 0) {
+      g.fillStyle = rgba(COL.long, blockAlpha(L, maxRow)); g.fillRect(X0, y, len(L), 2.4);
+      g.fillStyle = rgba(COL.short, blockAlpha(Sh, maxRow)); g.fillRect(X0, y + 2.6, len(Sh), 2.4);
+    } else if (L > 0) { g.fillStyle = rgba(COL.long, blockAlpha(L, maxRow)); g.fillRect(X0, y, len(L), BARH); }
+    else if (Sh > 0) { g.fillStyle = rgba(COL.short, blockAlpha(Sh, maxRow)); g.fillRect(X0, y, len(Sh), BARH); }
+  }
+  // 现价虚线（与主图现价同一 y）
+  const my = scale.y(mark);
+  if (my >= 0 && my <= S.mainH) {
+    g.strokeStyle = 'rgba(31,45,56,.45)'; g.setLineDash([4, 3]);
+    g.beginPath(); g.moveTo(0, Math.round(my) + 0.5); g.lineTo(cw, Math.round(my) + 0.5); g.stroke(); g.setLineDash([]);
+    g.fillStyle = '#5B6B74'; g.font = `10px ${FONT}`; g.textAlign = 'right';
+    g.fillText('现价', cw - 5, my - 4); g.textAlign = 'left';
+  }
+  // 两侧峰值行标注：金额 · 该行中心价
+  const peakLabel = (r, amt, color) => {
+    if (r < 0) return;
+    const txt = `${fmtM(amt)} · ${fmtPrice(scale.inv(r * ROW + ROW / 2))}`;
+    g.font = `600 11px ${FONT}`;
+    const w = g.measureText(txt).width;
+    let x = X0 + len(amt) + 5;
+    if (x + w > cw - 2) x = Math.max(X0 + 2, cw - 2 - w);
+    g.fillStyle = color; g.fillText(txt, x, r * ROW + ROW / 2 + 4);
+  };
+  if (peakL >= 0) peakLabel(peakL, rowsL[peakL], COL.long);
+  if (peakS >= 0) peakLabel(peakS, rowsS[peakS], COL.short);
+  // 主图下方空区：图外汇总 + 口径注脚
+  let ty = S.mainH + 24;
+  g.font = `11px ${FONT}`;
+  const offLine = (txt, color) => { g.fillStyle = color; g.fillText(txt, X0 + 2, ty); ty += 18; };
+  if (offTS >= 100000) offLine(`上方图外 · 空 ${fmtM(offTS)}`, COL.short);
+  if (offTL >= 100000) offLine(`上方图外 · 多 ${fmtM(offTL)}`, COL.long);
+  if (offBL >= 100000) offLine(`下方图外 · 多 ${fmtM(offBL)}`, COL.long);
+  if (offBS >= 100000) offLine(`下方图外 · 空 ${fmtM(offBS)}`, COL.short);
+  g.fillStyle = '#8A9BA3'; g.font = `10px ${FONT}`;
+  g.fillText('每行 = 该价位片清算额 · 长度 ∝ √金额', X0 + 2, ty + 2);
+  if (!clusters.length) { g.font = `11px ${FONT}`; g.fillStyle = '#8A9BA3'; g.fillText('清算带已关闭', X0 + 2, 20); }
 }
 
 /* ================= 读数行（两行，对图1） ================= */
@@ -676,6 +726,7 @@ function draw() {
     ctx.stroke(); ctx.setLineDash([]);
   }
   updateHomeBtn();
+  renderLadder();
 }
 
 /* ================= 悬停卡（定版规格） ================= */
