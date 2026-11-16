@@ -17,50 +17,50 @@
     font-family:Inter,"SF Pro Display","Segoe UI",Roboto,"Helvetica Neue",Arial,"PingFang SC","Microsoft YaHei",sans-serif;
     font-variant-numeric:tabular-nums; -webkit-font-smoothing:antialiased;}
   .wrap{max-width:1800px; margin:0 auto; background:#fff; border-left:1px solid var(--border); border-right:1px solid var(--border);
-    padding:24px 28px 20px; min-height:100vh;}
+    padding:28px 32px 22px; min-height:100vh;}
   @media (max-width:760px){ .wrap{padding:10px 8px 14px;} }
   /* ---- 头部：币对 + 大价格 + 横排 24h 统计（对图1） ---- */
-  .head1{display:flex; align-items:flex-end; gap:18px; flex-wrap:wrap; padding-bottom:20px; border-bottom:1px solid var(--border);}
-  .pair-name{font-size:21px; font-weight:700; white-space:nowrap; padding-bottom:5px; letter-spacing:.01em;}
-  .big-price{font-size:40px; font-weight:800; line-height:1; white-space:nowrap; letter-spacing:-.02em;}
+  .head1{display:flex; align-items:flex-end; gap:22px; flex-wrap:wrap; padding-bottom:24px; border-bottom:1px solid var(--border);}
+  .pair-name{font-size:24px; font-weight:700; white-space:nowrap; padding-bottom:6px; letter-spacing:.01em;}
+  .big-price{font-size:48px; font-weight:800; line-height:1; white-space:nowrap; letter-spacing:-.02em;}
   .head-stats{display:flex; align-items:stretch; flex-wrap:wrap; margin-left:auto;}
-  .hstat{white-space:nowrap; padding:0 18px; border-left:1px solid #EEF2F5;}
+  .hstat{white-space:nowrap; padding:0 22px; border-left:1px solid #EEF2F5;}
   .hstat:first-child{border-left:none; padding-left:0;}
-  .hstat span{display:block; color:var(--gray); font-weight:400; font-size:11px; letter-spacing:.05em; margin-bottom:4px;}
-  .hstat b{font-size:15.5px; color:var(--ink); font-weight:600;}
+  .hstat span{display:block; color:var(--gray); font-weight:400; font-size:11.5px; letter-spacing:.05em; margin-bottom:5px;}
+  .hstat b{font-size:17px; color:var(--ink); font-weight:600;}
   /* ---- 币种页签：星标 pill + 涨跌（对图1） ---- */
-  .tabs-row{display:flex; align-items:center; gap:16px; flex-wrap:wrap; margin-top:18px;}
-  .tabs{display:flex; gap:9px; flex-wrap:wrap;}
+  .tabs-row{display:flex; align-items:center; gap:18px; flex-wrap:wrap; margin-top:22px;}
+  .tabs{display:flex; gap:10px; flex-wrap:wrap;}
   .tabs button{border:1px solid var(--border); background:#fff; color:var(--ink); border-radius:999px;
-    padding:8px 16px; font-size:13.5px; font-weight:600; cursor:pointer; font-family:inherit; display:flex; gap:6px; align-items:center;}
-  .tabs button .star{color:#F5B800; font-size:12.5px;}
-  .tabs button .pct{font-size:12.5px; font-weight:600;}
+    padding:10px 19px; font-size:14.5px; font-weight:600; cursor:pointer; font-family:inherit; display:flex; gap:7px; align-items:center;}
+  .tabs button .star{color:#F5B800; font-size:13.5px;}
+  .tabs button .pct{font-size:13px; font-weight:600;}
   .tabs button.on{background:var(--selected); border-color:var(--selected); color:#fff;}
   .tabs button.on .star{color:#fff;}
   .tabs button.on .pct{color:#fff !important;}
   /* ---- 时间戳 ---- */
-  .stamps{margin-left:auto; display:flex; flex-direction:column; gap:3px; text-align:right; font-size:11.5px; color:var(--gray);}
+  .stamps{margin-left:auto; display:flex; flex-direction:column; gap:3px; text-align:right; font-size:12px; color:var(--gray);}
   /* ---- 多空总量：标签在条外（对图1） ---- */
-  .totals-row{display:flex; align-items:center; gap:16px; margin-top:22px;}
-  .totals-lab{font-size:15px; font-weight:800; white-space:nowrap; letter-spacing:.01em;}
+  .totals-row{display:flex; align-items:center; gap:18px; margin-top:26px;}
+  .totals-lab{font-size:17px; font-weight:800; white-space:nowrap; letter-spacing:.01em;}
   .totals-lab.long{color:var(--long);} .totals-lab.short{color:var(--short);}
-  .totals{flex:1; display:flex; height:14px; border-radius:7px; overflow:hidden; background:#F0F3F5;}
+  .totals{flex:1; display:flex; height:16px; border-radius:8px; overflow:hidden; background:#F0F3F5;}
   .totals .seg{height:100%; transition:width .3s;}
   .totals .seg.long{background:var(--long);} .totals .seg.short{background:var(--short);}
-  .totals-note{margin-top:9px; font-size:12.5px; color:var(--gray);}
+  .totals-note{margin-top:10px; font-size:13px; color:var(--gray);}
   /* ---- 读数行（图在工具栏上方，对图1） ---- */
 
   /* ---- 工具栏 ---- */
-  .toolbar{display:flex; align-items:center; gap:10px; margin-top:16px; padding-top:16px; border-top:1px solid #F0F3F5; flex-wrap:wrap;}
+  .toolbar{display:flex; align-items:center; gap:11px; margin-top:20px; padding-top:18px; border-top:1px solid #F0F3F5; flex-wrap:wrap;}
   .seg-ctl{display:flex; align-items:center; border:1px solid var(--border); border-radius:10px; overflow:hidden;}
-  .seg-ctl button{border:0; background:#fff; padding:7px 15px; font-size:13.5px; cursor:pointer; color:var(--ink); font-family:inherit;}
+  .seg-ctl button{border:0; background:#fff; padding:8px 17px; font-size:14px; cursor:pointer; color:var(--ink); font-family:inherit;}
   .seg-ctl button.on{background:var(--selected); color:#fff; font-weight:600;}
-  .seg-ctl .grp{padding:7px 4px 7px 12px; font-size:13.5px; color:var(--gray);}
-  .zoom-btn{width:32px; height:32px; border:1px solid var(--border); background:#fff; border-radius:10px;
-    font-size:16px; cursor:pointer; color:var(--ink); font-family:inherit; line-height:1;}
+  .seg-ctl .grp{padding:8px 4px 8px 13px; font-size:14px; color:var(--gray);}
+  .zoom-btn{width:34px; height:34px; border:1px solid var(--border); background:#fff; border-radius:10px;
+    font-size:17px; cursor:pointer; color:var(--ink); font-family:inherit; line-height:1;}
   .spacer{flex:1;}
   /* ---- 图表 + 阶梯 ---- */
-  .chart-flex{display:flex; margin-top:14px; border:1px solid var(--border); border-radius:10px; overflow:hidden;}
+  .chart-flex{display:flex; margin-top:16px; border:1px solid var(--border); border-radius:10px; overflow:hidden;}
   .chart-wrap{position:relative; flex:1; min-width:0;}
   canvas{display:block; width:100%; cursor:grab; touch-action:none; outline:none;}
   canvas.dragging{cursor:grabbing;}
