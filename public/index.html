@@ -112,7 +112,6 @@
     <div class="tabs" id="coinTabs"></div>
     <div class="stamps">
       <span id="stampLive">行情更新于 —</span>
-      <span id="stampSnap">清算快照于 —</span>
     </div>
   </div>
   <div class="totals-row">
@@ -337,7 +336,6 @@ function renderHeader() {
     $('totLong').textContent = '多头清算 —'; $('totShort').textContent = '空头清算 —'; bar.innerHTML = '';
   }
   $('stampLive').textContent = `行情更新于 ${S.liveAt ? fmtClock(S.liveAt) : '—'}（价格 / K 线 · 每 10 秒）`;
-  $('stampSnap').textContent = `清算快照于 ${S.snap ? fmtSnapTime(Date.parse(S.snap.fetchedAt)) : '—（积累中）'}（每小时自动重扫 · 打开/切回页面时自动校验）`;
 }
 function clusterRows(side) {
   if (!S.snap) return [];
