@@ -46,9 +46,7 @@
   .totals .seg.long{background:var(--long);} .totals .seg.short{background:var(--short);}
   .totals-note{margin-top:7px; font-size:12px; color:var(--gray);}
   /* ---- 读数行（图在工具栏上方，对图1） ---- */
-  .readout{margin-top:12px; font-size:12.5px; color:var(--gray); line-height:1.9; min-height:44px;}
-  .readout b{color:var(--ink); font-weight:600;}
-  .readout .dim{color:var(--axis-gray);}
+
   /* ---- 工具栏 ---- */
   .toolbar{display:flex; align-items:center; gap:10px; margin-top:6px; flex-wrap:wrap;}
   .seg-ctl{display:flex; align-items:center; border:1px solid var(--border); border-radius:8px; overflow:hidden;}
@@ -123,7 +121,6 @@
     <div class="totals-lab short" id="totShort">空头清算 —</div>
   </div>
   <div class="totals-note">上方空头清算密集 = 向上挤压的燃料；下方多头清算贴现价 = 下跌磁铁，容易连环踩踏。</div>
-  <div class="readout" id="readout"></div>
   <div class="toolbar">
     <div class="seg-ctl" id="tfCtl"></div>
     <div class="spacer"></div>
@@ -460,21 +457,33 @@ function renderLadder() {
 
 /* ================= 读数行（两行，对图1） ================= */
 function updateReadout(i) {
-  const el = $('readout');
-  if (!S.bars.length) { el.innerHTML = ''; return; }
+  // 读数存成段数组，由 draw() 画进图表顶部网格内（用户 2026-11-16：两行从图表上方移入图内；
+  // 「（最新一根）」与「均线按当前周期根数计…」说明按用户要求删除）
+  if (!S.bars.length) { S.readout = null; return; }
   const idx = i >= 0 ? i : S.bars.length - 1;
   const b = S.bars[idx], prev = S.bars[idx - 1];
   const chg = prev ? (b.c / prev.c - 1) * 100 : 0;
   const amp = (b.h - b.l) / b.l * 100;
-  const ema = (arr, col, name) =>
-    `<span style="color:${col}">${name}：</span><b>${arr && isFinite(arr[idx]) ? fmtPrice(arr[idx]) : '—'}</b>`;
-  el.innerHTML =
-    `<div>${barTime(b.t)}&ensp;开 <b>${fmtPrice(b.o)}</b>&ensp;高 <b>${fmtPrice(b.h)}</b>&ensp;低 <b>${fmtPrice(b.l)}</b>&ensp;收 <b>${fmtPrice(b.c)}</b>&ensp;` +
-    `涨幅 <b style="color:${chg >= 0 ? COL.up : COL.down}">${fmtPct(chg, 2)}</b>&ensp;振幅 <b>${amp.toFixed(2)}%</b>&ensp;量 <b>${fmtVolPlain(b.v)}</b>` +
-    `${idx === S.bars.length - 1 ? '&ensp;<span class="dim">（最新一根）</span>' : ''}</div>` +
-    `<div>${ema(IND && IND.ema5, COL.ema5, 'EMA(5)')} ${ema(IND && IND.ema30, COL.ema30, 'EMA(30)')} ` +
-    `${ema(IND && IND.ema90, COL.ema90, 'EMA(90)')} ${ema(IND && IND.ema200, COL.ema200, 'EMA(200)')}` +
-    `&ensp;<span class="dim">均线按当前周期根数计；历史不足 200 根时 EMA(200) 如实缺失</span></div>`;
+  const G = '#8A9BA3', IK = '#1F2D38';
+  const lab = (t) => [t, G, 400];
+  const val = (t) => [t, IK, 600];
+  const line1 = [
+    lab(`${barTime(b.t)}  开 `), val(fmtPrice(b.o)),
+    lab('  高 '), val(fmtPrice(b.h)),
+    lab('  低 '), val(fmtPrice(b.l)),
+    lab('  收 '), val(fmtPrice(b.c)),
+    lab('  涨幅 '), [fmtPct(chg, 2), chg >= 0 ? COL.up : COL.down, 600],
+    lab('  振幅 '), val(`${amp.toFixed(2)}%`),
+    lab('  量 '), val(fmtVolPlain(b.v)),
+  ];
+  const emaSeg = (arr, col, name) => [[`${name}：`, col, 400], val(arr && isFinite(arr[idx]) ? fmtPrice(arr[idx]) : '—'), lab('  ')];
+  const line2 = [
+    ...emaSeg(IND && IND.ema5, COL.ema5, 'EMA(5)'),
+    ...emaSeg(IND && IND.ema30, COL.ema30, 'EMA(30)'),
+    ...emaSeg(IND && IND.ema90, COL.ema90, 'EMA(90)'),
+    ...emaSeg(IND && IND.ema200, COL.ema200, 'EMA(200)'),
+  ];
+  S.readout = [line1, line2];
 }
 
 /* ================= 图表几何与绘制 ================= */
@@ -730,6 +739,20 @@ function draw() {
       ctx.fillStyle = '#fff'; ctx.font = `500 14px ${FONT}`; ctx.textAlign = 'center';
       ctx.fillText(fmtPrice(livePx), plotW + AXIS_W / 2, y);
       ctx.textAlign = 'left';
+    }
+  }
+  /* --- 读数两行（图表顶部网格内） --- */
+  if (S.readout) {
+    ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
+    let ry = 17;
+    for (const line of S.readout) {
+      let rx = 10;
+      for (const [t, c, w] of line) {
+        ctx.font = `${w} 12.5px ${FONT}`; ctx.fillStyle = c;
+        const tw = ctx.measureText(t).width;
+        ctx.fillText(t, rx, ry); rx += tw;
+      }
+      ry += 19;
     }
   }
   /* --- 十字线 --- */
