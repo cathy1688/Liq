@@ -58,8 +58,6 @@
   .seg-ctl .grp{padding:7px 4px 7px 12px; font-size:13.5px; color:var(--gray);}
   .zoom-btn{width:32px; height:32px; border:1px solid var(--border); background:#fff; border-radius:10px;
     font-size:16px; cursor:pointer; color:var(--ink); font-family:inherit; line-height:1;}
-  .legend-note{font-size:12px; color:var(--gray); display:flex; align-items:center; gap:6px;}
-  .legend-note i{width:13px; height:10px; border-radius:2px; display:inline-block;}
   .spacer{flex:1;}
   /* ---- 图表 + 阶梯 ---- */
   .chart-head{display:flex; align-items:flex-end; margin-top:14px;}
@@ -137,7 +135,7 @@
     <button class="zoom-btn" id="zoomOut">−</button>
   </div>
   <div class="chart-head">
-    <div class="lh-note"><div class="legend-note"><i style="background:var(--long);opacity:.4"></i><i style="background:var(--short);opacity:.4"></i>颜色深浅 = 清算金额</div></div>
+    <div class="lh-note"></div>
     <div class="lh-title"><span>清算全景</span><span id="ladderRange"></span></div>
   </div>
   <div class="chart-flex">
