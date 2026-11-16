@@ -60,10 +60,7 @@
     font-size:16px; cursor:pointer; color:var(--ink); font-family:inherit; line-height:1;}
   .spacer{flex:1;}
   /* ---- 图表 + 阶梯 ---- */
-  .chart-head{display:flex; align-items:flex-end; margin-top:14px;}
-  .chart-head .lh-note{flex:1; min-width:0;}
-  .chart-head .lh-title{width:264px; flex:none; font-size:12px; color:var(--gray); font-weight:600; padding:0 10px 2px; display:flex; justify-content:space-between;}
-  .chart-flex{display:flex; margin-top:4px; border:1px solid var(--border); border-radius:10px; overflow:hidden;}
+  .chart-flex{display:flex; margin-top:14px; border:1px solid var(--border); border-radius:10px; overflow:hidden;}
   .chart-wrap{position:relative; flex:1; min-width:0;}
   canvas{display:block; width:100%; cursor:grab; touch-action:none; outline:none;}
   canvas.dragging{cursor:grabbing;}
@@ -78,7 +75,7 @@
   .hover-card .lab{color:#8A9BA3; font-size:12px; font-weight:400;}
   /* ---- 下方两列簇表 ---- */
   .lists{display:grid; grid-template-columns:1fr 1fr; gap:16px; margin-top:16px;}
-  @media (max-width:760px){ .lists{grid-template-columns:1fr;} .ladder{display:none;} .chart-head .lh-title{display:none;} }
+  @media (max-width:760px){ .lists{grid-template-columns:1fr;} .ladder{display:none;} }
   .list-box{border:1px solid var(--border); border-radius:12px; overflow:hidden; background:#fff;}
   .list-box h3{font-size:14px; font-weight:600; padding:12px 16px 4px;}
   #longHead{color:var(--long);} #shortHead{color:var(--short);}
@@ -133,10 +130,6 @@
     </div>
     <button class="zoom-btn" id="zoomIn">+</button>
     <button class="zoom-btn" id="zoomOut">−</button>
-  </div>
-  <div class="chart-head">
-    <div class="lh-note"></div>
-    <div class="lh-title"><span>清算全景</span><span id="ladderRange"></span></div>
   </div>
   <div class="chart-flex">
     <div class="chart-wrap" id="chartWrap">
@@ -383,9 +376,11 @@ function renderLadder() {
   const g = cv.getContext('2d');
   g.setTransform(dpr, 0, 0, dpr, 0, 0);
   g.clearRect(0, 0, cw, ch);
-  const rangeEl = $('ladderRange');
-  if (!S.snap || !scale) { if (rangeEl) rangeEl.textContent = ''; return; }
-  if (rangeEl) rangeEl.textContent = '同主图窗口';
+  // 面板名画在框内底部居中（用户 2026-11-16：删掉图表上方整行标题，名字移进右侧框内、贴底留一点距离）
+  g.font = '600 12px Inter, system-ui, sans-serif'; g.fillStyle = '#8A9BA3'; g.textAlign = 'center';
+  g.fillText('清算全景', cw / 2, ch - 10);
+  g.textAlign = 'left';
+  if (!S.snap || !scale) return;
   const clusters = displayedClusters();
   const extLo = scale.cMin / 1.05, extHi = scale.cMax * 1.05;
   const yHi = Math.max(0, scale.y(extHi)), yLo = Math.min(S.mainH, scale.y(extLo));
